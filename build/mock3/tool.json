@@ -1,0 +1,281 @@
+[
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your team's internal MCP server exposes a <code>run_sql</code> tool so Claude Code can inspect the staging database while debugging. The description says \"read-only: SELECT statements only\", yet last week a session ran <code>UPDATE orders SET status='shipped'</code> while fixing a failing test, and a <code>WITH ... DELETE</code> statement slipped past a keyword check you added afterwards. Developers still need ad-hoc queries during debugging. What is the most robust design change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add a <code>PreToolUse</code> hook that rejects any <code>run_sql</code> input containing UPDATE, DELETE, INSERT or DROP before it reaches the server.",
+        "correct": false,
+        "explanation": "A hook is deterministic, but it is still a keyword filter over SQL text, which is exactly what the <code>WITH ... DELETE</code> statement already defeated; comments, string literals and stored procedures offer more bypasses. It also runs on each developer's machine, so anyone without the hook configured has an unguarded tool."
+      },
+      {
+        "letter": "B",
+        "text": "Expand the tool description with explicit examples of allowed and forbidden statements, and repeat the read-only rule in the project <code>CLAUDE.md</code>.",
+        "correct": false,
+        "explanation": "Descriptions and <code>CLAUDE.md</code> guidance shape what Claude tends to do, not what it can do. The session that ran <code>UPDATE</code> already had a description saying SELECT only; more words make the violation rarer, not impossible, which is not enough for a write to a shared database."
+      },
+      {
+        "letter": "C",
+        "text": "Run queries on a database role granted only SELECT, and rename the tool <code>query_staging_readonly</code> so the name states the limit.",
+        "correct": true,
+        "explanation": "Enforcing read-only at the database role makes the constraint hold regardless of what SQL the model writes or which client calls the server, and an <code>UPDATE</code> simply fails with a permissions error the model can read. The name reinforces the intent for tool selection, but the guarantee comes from the server side, not from the model's compliance."
+      },
+      {
+        "letter": "D",
+        "text": "Add <code>mcp__internal__run_sql</code> to the <code>permissions.deny</code> list in <code>.claude/settings.json</code> and have developers run queries by hand.",
+        "correct": false,
+        "explanation": "Denying the tool removes the write risk by removing the debugging capability the team said it still needs, so every database check becomes a manual copy-paste step. A read-only role keeps the tool useful while achieving the same safety, so this trades away value for no additional protection."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your codebase-exploration agent uses an MCP tool <code>search_symbols(name)</code> backed by your indexing service. When an engineer asks where <code>UserId</code> is used, the tool returns 4,200 matches as one JSON array of roughly 380 KB, the turn takes 40 seconds, and the agent's answer cites three files and misses the rest. The index itself is accurate. How should the tool's contract change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Return at most 50 matches by default, include the total count and a <code>truncated</code> flag, and accept <code>offset</code> and <code>path_prefix</code> parameters for narrowing.",
+        "correct": true,
+        "explanation": "Capping the page, reporting the true total and offering narrowing parameters lets the agent see the shape of the result, decide whether to page or filter by directory, and keep each turn small. The model gets a usable signal (4,200 total, 50 shown) instead of a wall of matches it cannot attend to."
+      },
+      {
+        "letter": "B",
+        "text": "Keep returning every match so the model has complete information, but call <code>search_symbols</code> from a subagent whose context is separate from the main conversation.",
+        "correct": false,
+        "explanation": "Isolating the call in a subagent protects the main conversation, but the subagent now receives the same 380 KB and has the same attention problem, so its summary will still miss files. The 40-second turn is also unchanged, and the token cost is paid every time the tool runs."
+      },
+      {
+        "letter": "C",
+        "text": "Have the indexing service summarise the matches with a second model call and return a prose overview of where the symbol is used.",
+        "correct": false,
+        "explanation": "A prose summary discards the exact paths and line numbers the agent needs to open files with <code>Read</code> or follow up with <code>Grep</code>, adds another model call to every search, and hides which matches were dropped. Exploration tools should return precise, structured data the model can act on."
+      },
+      {
+        "letter": "D",
+        "text": "Return the full match list compressed to file path and line number only, dropping code snippets so the response fits in fewer tokens.",
+        "correct": false,
+        "explanation": "Trimming snippets shrinks each entry but still ships 4,200 items in one result, so the response remains tens of thousands of tokens the model cannot reason over reliably. It also removes the context that lets the agent judge relevance without opening every file, without adding any way to narrow the search."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "A repetitive-task automation in your productivity agent opens pull requests through an MCP tool <code>open_pr(branch, title, body)</code>. On Tuesday the GitHub call timed out after the PR had in fact been created; the agent retried and the team received two identical PRs, and a later retry produced a third. Roughly 2% of calls hit this timeout. Which change eliminates the duplicate PRs most reliably?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Instruct the agent in its system prompt to call <code>list_prs</code> for the branch before every <code>open_pr</code> and skip creation when one already exists.",
+        "correct": false,
+        "explanation": "This depends on the model remembering an extra step on every retry, including after a confusing timeout, and it adds a round trip to the 98% of calls that succeed. Duplicate protection is a property the tool should guarantee, not a convention the agent is asked to follow."
+      },
+      {
+        "letter": "B",
+        "text": "Return <code>is_error: true</code> with \"PR already exists for this branch\" when the server finds an open PR, so the agent stops retrying.",
+        "correct": false,
+        "explanation": "Rejecting the duplicate stops the third PR but leaves the agent holding an error with no PR number or URL, so it has to interpret the failure and work out how to continue. The successful outcome already exists; reporting it as an error turns a recoverable retry into a dead end."
+      },
+      {
+        "letter": "C",
+        "text": "Split the tool into <code>push_branch</code> and <code>create_pr</code> so a timeout in one step can be retried without repeating the other.",
+        "correct": false,
+        "explanation": "Finer steps do not change the failure: a timeout on <code>create_pr</code> after GitHub has created the PR still leads to a duplicate on retry. It also doubles the number of calls and gives the model a second partial-failure state to reason about."
+      },
+      {
+        "letter": "D",
+        "text": "Make <code>open_pr</code> idempotent on <code>branch</code>: return the existing open PR for that branch if there is one, otherwise create it and return it.",
+        "correct": true,
+        "explanation": "With the branch as the natural idempotency key, a retry after a timeout returns the PR that was already created, so repeated calls converge on one result and the agent always receives the PR it needs to continue. The guarantee lives in the tool, where it holds for every caller and every retry."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your agent queries the internal issue tracker through an MCP tool <code>search_issues(query: string)</code>. The description documents a mini-syntax such as <code>status:open assignee:@me label:backend</code>. Logs show Claude producing <code>status=open</code>, <code>is:open</code>, plain phrases like \"open backend issues\", and inconsistent quoting of labels, so about a third of searches return nothing and the agent reports that no matching issues exist. What is the most effective fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add three worked examples of correctly formatted queries to the tool description and repeat the syntax rules in the agent's system prompt.",
+        "correct": false,
+        "explanation": "Examples improve the hit rate, but the model is still asked to generate a bespoke query language from memory on every call, and the drift you already see (<code>is:open</code> borrowed from GitHub syntax) is the predictable result. The schema can express these constraints so no generation is needed."
+      },
+      {
+        "letter": "B",
+        "text": "Replace the string with typed parameters: <code>status</code> as an enum, <code>assignee</code>, a <code>labels</code> array, and an optional free-text <code>text</code> field.",
+        "correct": true,
+        "explanation": "Typed parameters move the syntax into the input schema, where the enum and array types constrain what Claude can produce and the server owns the translation into the tracker's query language. The model expresses intent as fields it already understands rather than reproducing a formatting convention."
+      },
+      {
+        "letter": "C",
+        "text": "Have the server parse incoming queries leniently, accepting <code>=</code>, <code>:</code> and <code>is:</code> forms and mapping plain English to filters with a keyword table.",
+        "correct": false,
+        "explanation": "A forgiving parser papers over the current variants but must be extended every time a new phrasing appears, and it guesses silently: \"open backend issues\" could mean a label or a component. Ambiguous parses return wrong results that look like real searches, which is harder to detect than an empty one."
+      },
+      {
+        "letter": "D",
+        "text": "Return <code>is_error: true</code> with the expected syntax whenever the query fails to parse, so the model corrects its format on the next call.",
+        "correct": false,
+        "explanation": "Most of the bad queries do not fail to parse; they parse into filters that match nothing, so the server has no error to raise. Where it can detect a problem, this still costs an extra round trip per search and keeps the model responsible for a format it keeps getting wrong."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your platform team maintains a 12-step \"explain this legacy service\" walkthrough: locate entry points, map data stores, list scheduled jobs, and so on, parameterised by service name. Most engineers use Claude Code, but several use other MCP-capable clients, and the team wants the walkthrough started deliberately by the engineer with the service name supplied, not chosen by the model partway through a task. Where should this live in your MCP server?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "As a tool <code>explain_service(service_name)</code> whose result is the 12-step instruction text, so any connected client can call it.",
+        "correct": false,
+        "explanation": "Tools are model-controlled: Claude decides when to call them, which is the opposite of the deliberate, engineer-initiated start the team wants, and it may invoke the walkthrough mid-task or never. Returning instructions as a tool result also blurs the line between data the model reads and directions it follows."
+      },
+      {
+        "letter": "B",
+        "text": "As a resource at <code>legacy://walkthrough</code> containing the steps, which engineers attach to the conversation when they need it.",
+        "correct": false,
+        "explanation": "Resources are application-controlled content such as documents or schemas; they carry no arguments, so the service name cannot be supplied and the steps cannot be tailored. Engineers would attach a generic document and then explain in chat which service they mean."
+      },
+      {
+        "letter": "C",
+        "text": "As a slash command in <code>.claude/commands/explain-service.md</code> that reads the service name from <code>$ARGUMENTS</code>.",
+        "correct": false,
+        "explanation": "A project slash command gives Claude Code users exactly the invocation you want, but it is a Claude Code feature and does nothing for the engineers on other MCP clients. The team asked for one definition that every client can use, which points at the MCP server rather than a per-client file."
+      },
+      {
+        "letter": "D",
+        "text": "As an MCP prompt with a required <code>service_name</code> argument that the engineer selects explicitly in their client.",
+        "correct": true,
+        "explanation": "MCP prompts are user-controlled templates with typed arguments, designed for exactly this case: a reusable, parameterised workflow the person chooses to start. Any MCP client can list and invoke it, and Claude Code surfaces server prompts as slash commands, so the one definition serves both groups."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your extraction service registers tools <code>extract_invoice</code>, <code>extract_invoice_v2</code>, and <code>extract_invoice_strict</code> because two schema generations were kept during a migration. The descriptions of the older two say \"deprecated, prefer extract_invoice_strict\", yet in 11% of runs Claude still calls <code>extract_invoice_v2</code>, producing records the downstream loader rejects. Claude also needs <code>queue_human_review</code> for unreadable scans. What is the right fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Remove <code>extract_invoice</code> and <code>extract_invoice_v2</code> from the tools array, leaving the strict variant and <code>queue_human_review</code>.",
+        "correct": true,
+        "explanation": "A tool the model must never choose should not be offered: three near-identical extractors are a selection problem no description can fully solve, and removing them makes the wrong call impossible while leaving <code>queue_human_review</code> available. The deprecated code can stay on the server for other callers without appearing in this request."
+      },
+      {
+        "letter": "B",
+        "text": "Force <code>tool_choice</code> to <code>{\"type\": \"tool\", \"name\": \"extract_invoice_strict\"}</code> so every request is guaranteed to produce a strict-schema record.",
+        "correct": false,
+        "explanation": "Forcing a single named tool guarantees the strict schema but also removes Claude's ability to call <code>queue_human_review</code>, so unreadable scans are forced into fabricated records instead of being routed to a person. It fixes the 11% by breaking the escalation path."
+      },
+      {
+        "letter": "C",
+        "text": "Move the deprecation warning to the top of the system prompt in capital letters and add two examples of choosing the strict variant.",
+        "correct": false,
+        "explanation": "Stronger wording and examples lower the misroute rate but keep offering the model three tools whose names and schemas overlap heavily, so some fraction of calls will still land on <code>extract_invoice_v2</code>. Prompt emphasis is the tool for nuanced choices, not for a tool that has no valid use."
+      },
+      {
+        "letter": "D",
+        "text": "Keep all three tools but have the server map <code>extract_invoice_v2</code> outputs into the strict schema before returning them to the loader.",
+        "correct": false,
+        "explanation": "A server-side mapping keeps a translation layer alive indefinitely and cannot supply fields the v2 schema never captured, so the loader still receives incomplete strict records. It also spends engineering effort preserving a path the team has already decided nobody should take."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your invoice extraction tool's input schema defines <code>line_items</code> as a single string described as \"JSON array of items, each with description, quantity, unit_price\". Validation logs show 9% of outputs fail downstream parsing: unescaped quotes, quantities such as \"2 pcs\", and several items collapsed into one entry. Every call still counts as schema-valid because the field is just a string. How should the schema change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Split the extraction: <code>extract_invoice_header</code> for top-level fields and <code>extract_line_item</code> called once per item so each item is checked on its own.",
+        "correct": false,
+        "explanation": "One call per line item multiplies round trips on long invoices, leaves the model to track which items it has already emitted, and makes reassembly and ordering the application's problem. The schema can express repeated typed items directly without turning one extraction into a dozen."
+      },
+      {
+        "letter": "B",
+        "text": "Keep the string field but expand its description with a complete example and rules for escaping quotes and using numeric quantities.",
+        "correct": false,
+        "explanation": "A richer description leaves the model hand-serialising JSON inside a JSON string, so escaping mistakes and \"2 pcs\" remain possible and remain invisible to schema validation. The instructions describe a structure the schema could enforce instead."
+      },
+      {
+        "letter": "C",
+        "text": "Define <code>line_items</code> as an array of objects with required <code>description</code> (string), <code>quantity</code> (number) and <code>unit_price</code> (number) properties.",
+        "correct": true,
+        "explanation": "Nested typed objects put the structure where the model already produces structured output: each item becomes a separate element, <code>quantity</code> must be a number, and quoting is handled by the tool-use encoding rather than by hand. The 9% of malformed strings disappear because there is no string to malform."
+      },
+      {
+        "letter": "D",
+        "text": "Add a <code>validate_line_items</code> tool that Claude calls after extraction to parse the string and report problems so it can retry.",
+        "correct": false,
+        "explanation": "A validation tool detects the bad strings after they are produced and adds a repair loop to every extraction, when the goal is to prevent them. It also relies on the model choosing to call it and to interpret the parse errors correctly, which is more model behaviour to trust, not less."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your extraction agent is given helper tools <code>normalize_date</code>, <code>normalize_currency</code>, and <code>sum_line_items</code> alongside the <code>record_invoice</code> extraction tool. Traces show a typical invoice takes 14 to 20 tool calls and about 35 seconds, mostly Claude converting each date and amount one at a time before finally calling <code>record_invoice</code>. Accuracy on the raw values it reads from the document is already high. What is the best redesign?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Keep the helper tools but instruct Claude to batch all values into one call per helper and to issue those three calls in parallel to cut the round trips.",
+        "correct": false,
+        "explanation": "Batching and parallel calls reduce the count from 14 to perhaps 4, but the model is still orchestrating deterministic conversions it does not need to see, and whether it actually batches is a behaviour you are asking for rather than guaranteeing. The pipeline stays slower and more variable than it has to be."
+      },
+      {
+        "letter": "B",
+        "text": "Remove the helper tools: have <code>record_invoice</code> capture dates and amounts as written, then normalise and reconcile totals in application code.",
+        "correct": true,
+        "explanation": "Date parsing, currency normalisation and summing are deterministic and need no judgement, so they belong in code after extraction, not in the model's loop. The agent does the one thing it is good at, reading the document accurately, in a single tool call, and the 35-second, 20-call trace collapses to one turn."
+      },
+      {
+        "letter": "C",
+        "text": "Merge the three helpers into one <code>normalize_record</code> tool that takes the whole draft record and returns it cleaned in a single round trip.",
+        "correct": false,
+        "explanation": "One combined helper is better than three, but it still asks the model to produce a draft, wait for the cleaned version, and then call <code>record_invoice</code>, so every invoice pays two extra turns for work that could run after the model has finished. The tool exists only because normalisation was put in the wrong place."
+      },
+      {
+        "letter": "D",
+        "text": "Enable prompt caching on the system prompt and tool definitions so the repeated tool-call turns become cheaper to run.",
+        "correct": false,
+        "explanation": "Caching lowers the input-token cost of each of the 14 to 20 turns but does nothing about their number or the 35 seconds of latency, which is the problem the traces show. It is a sensible optimisation for the pipeline you end up with, not a fix for the design that produces so many turns."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your extraction agent, built on the Claude Agent SDK, calls <code>submit_record</code> to push validated invoices into the payables system without a person in the loop. Finance now requires human sign-off for any invoice whose <code>total_amount</code> exceeds 50,000 before it is submitted, while smaller invoices must keep flowing automatically. Auditors treat the rule as a hard control, not a preference. How should you implement it?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "State the threshold in the system prompt and tell Claude to call <code>queue_human_review</code> instead of <code>submit_record</code> whenever <code>total_amount</code> is over 50,000.",
+        "correct": false,
+        "explanation": "A prompt rule is followed most of the time, and auditors need it followed every time; one large invoice submitted on a lapse is a control failure. Instructions belong alongside the enforcement so Claude understands why a call was blocked, but they cannot be the enforcement."
+      },
+      {
+        "letter": "B",
+        "text": "Add a required <code>approved_by</code> parameter to <code>submit_record</code> and have Claude populate it from the approval field on the document.",
+        "correct": false,
+        "explanation": "A required parameter only guarantees the field is present, not that a real approval happened: the model can fill it from any name it finds, or from nothing, to satisfy the schema. It also puts the sign-off decision inside the extraction call rather than in front of it."
+      },
+      {
+        "letter": "C",
+        "text": "Split into <code>submit_record</code> and <code>submit_high_value_record</code>, and leave the second out of the allowed tools so Claude cannot submit large invoices.",
+        "correct": false,
+        "explanation": "The model still decides which tool to call based on the amount, so a large invoice routed to <code>submit_record</code> goes straight through. Splitting tools moves the choice around without removing it from the model, and the missing tool gives no path to approval."
+      },
+      {
+        "letter": "D",
+        "text": "Intercept <code>submit_record</code> with a <code>PreToolUse</code> hook that reads <code>total_amount</code> from the input and denies the call above 50,000.",
+        "correct": true,
+        "explanation": "A <code>PreToolUse</code> hook runs in code before the tool executes and sees the exact input Claude supplied, so the threshold is enforced deterministically on every call regardless of what the model intended. Invoices under the limit pass untouched, larger ones are denied with a reason the agent can act on, and the control is auditable."
+      }
+    ]
+  }
+]

@@ -1,0 +1,374 @@
+[
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Context & Reliability",
+  "prompt": "A pull request regenerates a vendored dependency and a 40,000-line lockfile alongside 12 real source changes. Your CI step inlines the full output of <code>git diff origin/main</code> into the prompt for <code>claude -p</code>. On this PR the run fails with a prompt-too-long error, and on smaller PRs with similar generated churn the review comments almost entirely on the lockfile and misses the source changes. What should you change?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Truncate the inlined diff to the first 150,000 tokens so every request fits, and tell Claude in the prompt that the diff may be incomplete.",
+    "correct": false,
+    "explanation": "A token cut keeps whichever files happen to sort first, so the lockfile can still consume the whole budget while the 12 source hunks fall off the end. It fixes the error message without fixing what Claude sees, and the warning that the diff may be incomplete gives it nothing to recover the missing changes."
+   },
+   {
+    "letter": "B",
+    "text": "Move the review to a model with a 1M-token context window so the complete diff fits, and keep inlining the whole diff as today.",
+    "correct": false,
+    "explanation": "A larger window makes the request succeed, but the 40,000-line lockfile still dominates the input, so cost rises sharply and attention is still spent on generated noise rather than the source changes. It also postpones the failure to the next PR whose vendored churn is bigger, instead of removing generated content from the prompt."
+   },
+   {
+    "letter": "C",
+    "text": "Exclude generated and vendored paths from the diff, inline only the source hunks, and let Claude <code>Read</code> nearby files on demand.",
+    "correct": true,
+    "explanation": "Filtering generated and vendored paths removes content that has no review value before it reaches the model, which fixes both the size failure and the distraction on smaller PRs. Inlining only the source hunks and letting Claude pull additional files on demand keeps context proportional to what actually needs review, which the other options never address."
+   },
+   {
+    "letter": "D",
+    "text": "Chunk the diff into 20,000-token segments, run one review invocation per chunk in parallel, and merge the findings into a single PR comment.",
+    "correct": false,
+    "explanation": "Chunking spends most invocations reviewing lockfile fragments, multiplies cost by the number of chunks, and separates source hunks from the files they depend on, so cross-file issues are missed. The generated content is still being reviewed; it is just being reviewed in pieces."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Context & Reliability",
+  "prompt": "Your review step calls the Messages API directly. Each request sends a 35,000-token block of coding standards and architecture notes, then the PR diff, then the review instructions, with a <code>cache_control</code> breakpoint on the final instructions block. The standards have not changed in three months, yet usage logs show <code>cache_read_input_tokens</code> near zero on almost every request and input tokens dominate the monthly bill. What is the most effective fix?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Move the breakpoint to the end of the standards block, so the diff and the instructions both come after the cached prefix.",
+    "correct": true,
+    "explanation": "Caching matches on an exact prefix up to the breakpoint. With the breakpoint after the diff, the prefix contains content that differs on every PR, so nothing can hit. Ending the cached prefix at the stable standards block means every review after the first reads 35,000 tokens at the cache-read rate, which none of the other options achieve."
+   },
+   {
+    "letter": "B",
+    "text": "Condense the standards block to a 5,000-token summary so the uncached portion is cheaper on every request that misses.",
+    "correct": false,
+    "explanation": "Shrinking the standards reduces the per-request cost but leaves the cache miss in place, so you still pay full price for the same content on every PR and lose review guidance in the process. The problem in the stem is breakpoint placement, not the size of the stable content."
+   },
+   {
+    "letter": "C",
+    "text": "Send the diff first so the shared standards sit directly before the breakpoint, then keep the breakpoint on the instructions.",
+    "correct": false,
+    "explanation": "The cache key is the entire prefix up to the breakpoint, not the blocks nearest to it. Putting the diff first makes the varying content the start of the prefix, so the standards can never match across PRs. This reorders the prompt without creating a stable prefix."
+   },
+   {
+    "letter": "D",
+    "text": "Move the standards into the system prompt while leaving the breakpoint where it is, since system content is cached automatically.",
+    "correct": false,
+    "explanation": "System prompt content is not cached automatically; it is cached only when a breakpoint covers it. Because the breakpoint stays after the diff, the prefix still changes with every PR and reads remain near zero, so this adds a move with no effect on the bill."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Context & Reliability",
+  "prompt": "Your CI review job runs <code>claude -p</code> with <code>--output-format text</code> and stores only the comment it posts. Finance reports that API spend for the job tripled over two weeks. Nobody can say which PRs cost most, whether runs are taking more turns than before, or whether a review-prompt change deployed on the 14th is responsible. What should you add to the job first?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Enable <code>--verbose</code> and archive the full stdout of every run so the transcript can be inspected when a spending spike is noticed.",
+    "correct": false,
+    "explanation": "Verbose transcripts show what Claude did in one run but are unstructured text, so answering which PRs cost most or whether turns increased after the 14th means reading hundreds of logs by hand. Storing them also grows quickly and still contains no cost figure."
+   },
+   {
+    "letter": "B",
+    "text": "Estimate each run's cost from the character count of the diff and the posted comment, and alert when the estimate exceeds a threshold.",
+    "correct": false,
+    "explanation": "Diff and comment size ignore what actually drives spend in an agentic run: files Claude reads, tool results, and the number of turns. A run that reads the whole repository for a two-line diff would look cheap by this estimate, so the alert would miss the very cases you need to find."
+   },
+   {
+    "letter": "C",
+    "text": "Run each <code>claude -p</code> review twice on every PR and compare the two outputs so prompt regressions are caught before they affect cost.",
+    "correct": false,
+    "explanation": "Duplicating every review doubles the spend you are trying to explain and compares output text rather than measuring cost or turns. Output differences between two runs are normal for an agentic reviewer and would not tell you whether the prompt change on the 14th made runs longer."
+   },
+   {
+    "letter": "D",
+    "text": "Switch to <code>--output-format json</code> and record <code>total_cost_usd</code>, <code>num_turns</code> and <code>duration_ms</code> per run, keyed by PR number and prompt version.",
+    "correct": true,
+    "explanation": "The JSON result envelope already carries the per-run cost, turn count, duration and session ID, so recording them alongside the PR number gives structured, queryable data. That answers all three questions in the stem directly and lets you resume the exact session of an outlier run to see why, at no additional API cost."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Context & Reliability",
+  "prompt": "Your review runs on every push to every pull request. A cost breakdown shows 58% of runs are on draft PRs or on pushes superseded by another push within 10 minutes, and about a fifth of runs review code that fails the unit-test job anyway. Developers say they only read the review once a PR is marked ready. Monthly spend is 3x the budget while reviews of ready PRs are considered good. What should you change?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Switch the job to a smaller, cheaper model via <code>--model</code> for every run so the per-run cost drops enough to bring spend under budget without changing when reviews happen.",
+    "correct": false,
+    "explanation": "A cheaper model lowers the price of runs that nobody reads, while degrading the ready-PR reviews the team values. The waste is in when reviews run, not what each costs, so the 58% of superseded and draft runs are still paid for in full."
+   },
+   {
+    "letter": "B",
+    "text": "Trigger the review on <code>ready_for_review</code> and on pushes to non-draft PRs only after the test job passes, cancelling a queued run when a newer push arrives.",
+    "correct": true,
+    "explanation": "The waste is structural: reviews fire when nobody will read them and before cheaper deterministic checks have run. Gating on ready state and green tests, and cancelling superseded runs, removes most wasted invocations while the reviews people actually read are unchanged. Cost control here is a trigger-design decision, not a model or prompt decision."
+   },
+   {
+    "letter": "C",
+    "text": "Keep the trigger but reuse the previous run's session with <code>--resume</code> so each push reviews only the new commits, cutting the tokens spent per run.",
+    "correct": false,
+    "explanation": "Resuming a session grows its context with every push, so later runs carry the whole history and cost more, and findings about earlier commits go stale. It also still runs on drafts and superseded pushes, just with a different context shape, so the main source of waste stays."
+   },
+   {
+    "letter": "D",
+    "text": "Skip the review for PRs under 50 changed lines, since most rapid successive pushes are small fix-ups, and keep full reviews for larger changes only.",
+    "correct": false,
+    "explanation": "Line count is not the signal: small PRs still need review, and a two-line change to an authorization check is exactly what the reviewer exists for. It would also let the wasted draft and superseded runs on larger PRs continue exactly as before."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Code Generation with Claude Code",
+  "domain": "Context & Reliability",
+  "prompt": "In a direct-execution session, Claude Code makes five sequential edits across three files to add a caching layer. Tests pass after the second edit, but the fourth edit changes a shared interface and the suite now fails in unrelated modules. You want both the working tree and the conversation back to the state right after the second edit, without losing the exploration and decisions that preceded it. What do you do?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Use <code>/rewind</code> to restore the checkpoint taken after the second edit, for both the code and the conversation.",
+    "correct": true,
+    "explanation": "Claude Code checkpoints the files it edits and the conversation as it goes, and <code>/rewind</code> restores a chosen point for code, conversation, or both. That returns you precisely to the state after the second edit while keeping everything earlier in context, which none of the other options do without manual reconstruction or loss."
+   },
+   {
+    "letter": "B",
+    "text": "Run <code>git checkout -- .</code> to discard the working tree changes, then ask Claude to reapply the first two edits from its memory of them.",
+    "correct": false,
+    "explanation": "Discarding the tree removes the two edits that worked along with the three that did not, and re-applying them from memory risks subtle drift from what was tested. It also leaves the conversation describing edits that no longer exist, so later reasoning builds on a stale picture."
+   },
+   {
+    "letter": "C",
+    "text": "Ask Claude to reverse edits three through five by hand, since the diffs are still in context and it can apply the inverse changes.",
+    "correct": false,
+    "explanation": "Inverting three interdependent edits across files by hand is error-prone, especially the interface change that other modules depend on, and any mistake compounds the current breakage. The conversation also keeps the record of the failed approach, which can steer subsequent edits back toward it."
+   },
+   {
+    "letter": "D",
+    "text": "Start over with <code>claude --continue</code>, paste the failing test output, and ask Claude to fix the interface change forward.",
+    "correct": false,
+    "explanation": "<code>--continue</code> resumes the most recent conversation, so it carries the broken state and the failed approach with it rather than returning to the second edit. Fixing forward is a valid choice in other situations, but the stem asks to return to the known-good point, not to repair on top of the breakage."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Code Generation with Claude Code",
+  "domain": "Context & Reliability",
+  "prompt": "A nightly job runs <code>claude -p</code> with <code>--output-format json</code> to implement endpoints described in a spec file, run the tests, and commit. Twice this month the run lasted 90 minutes, alternating between editing code and re-running a flaky integration suite, until the runner's two-hour limit killed it with no commit. Those nights cost roughly thirty times a normal run. What is the right control?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Add a <code>PostToolUse</code> hook on <code>Bash</code> that exits with code 2 after the fifth test run so Claude is told to stop calling the suite.",
+    "correct": false,
+    "explanation": "A hook exit code 2 feeds a message back to Claude; it does not end the run. Claude may respond by editing more or running a different command, so the loop continues in another form. Hooks are good for steering individual tool calls, not for bounding the total length of an autonomous run."
+   },
+   {
+    "letter": "B",
+    "text": "Lower the runner's job limit from two hours to 30 minutes so a looping run is killed sooner and the cost is capped by wall-clock time.",
+    "correct": false,
+    "explanation": "Killing the process mid-edit leaves a half-modified working tree and no result envelope to inspect, and it caps normal runs too when the suite is merely slow. Wall-clock is an emergency backstop, not a control that lets you distinguish a looping run from a healthy long one."
+   },
+   {
+    "letter": "C",
+    "text": "Pass <code>--max-turns</code> sized for a normal run and treat a result at the cap or with <code>is_error</code> set as a failed night to inspect.",
+    "correct": true,
+    "explanation": "A turn cap bounds the agentic loop itself, so a run that oscillates between edits and test reruns stops after a predictable number of steps instead of at the runner's limit. Because the JSON result still arrives, the job can detect that the cap was reached and flag the night for review, which is both cheaper and more diagnosable than the alternatives."
+   },
+   {
+    "letter": "D",
+    "text": "Instruct Claude in the prompt to stop after at most five test runs and report what remains, relying on the instruction to bound the loop.",
+    "correct": false,
+    "explanation": "A prompt instruction is soft guidance: on a flaky suite Claude can plausibly decide one more run is justified, and nothing enforces the limit. The stem describes a cost control that must hold on the worst nights, which needs a hard bound rather than a request."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Developer Productivity with Claude",
+  "domain": "Context & Reliability",
+  "prompt": "Your productivity agent exposes an MCP tool <code>search_logs(service, query)</code> that returns every matching line as JSON. On a busy service one call returns about 1.8 MB; Claude Code truncates the result with a warning that it exceeds the MCP output limit, the agent loses the lines it actually needed, and after two such calls the session hits compaction. Where should the fix go?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Raise <code>MAX_MCP_OUTPUT_TOKENS</code> so the full result is delivered, and instruct Claude to scan it for the relevant lines itself.",
+    "correct": false,
+    "explanation": "Lifting the cap turns a truncated 1.8 MB result into a delivered one, which fills the context window even faster and makes compaction happen after a single call. The relevant lines are still buried in noise Claude has to read token by token, so both cost and reliability get worse."
+   },
+   {
+    "letter": "B",
+    "text": "Add <code>limit</code> and <code>since</code> parameters and return a match count plus the top matches with a cursor for more.",
+    "correct": true,
+    "explanation": "The server knows the data and can filter and count cheaply, so returning a bounded page with a total count and a cursor gives Claude what it needs to decide whether to narrow the query or page further. Result size becomes proportional to the question rather than to log volume, which is the only option here that stops the context problem at its source."
+   },
+   {
+    "letter": "C",
+    "text": "Have the server write the full result to a temp file and return its path so Claude can <code>Read</code> it in slices using offset and limit.",
+    "correct": false,
+    "explanation": "Returning a path avoids the truncation warning, but Claude must now page blindly through 1.8 MB of slices to find the lines it wants, each slice consuming context as it goes. The volume is moved rather than reduced, and the server has given up the filtering it is best placed to do."
+   },
+   {
+    "letter": "D",
+    "text": "Tell Claude in the system prompt to narrow its query before calling <code>search_logs</code>, so results stay small without changing the server.",
+    "correct": false,
+    "explanation": "Claude cannot know how many lines a query will match before it runs, and the tool offers no way to ask for fewer. Prompt guidance may reduce the frequency of oversized results, but a busy service will still produce them, and when it does the same truncation and loss recur."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Developer Productivity with Claude",
+  "domain": "Context & Reliability",
+  "prompt": "An internal codebase Q&A tool built on the Messages API prepends a 60,000-token architecture digest to every question and marks it with <code>cache_control</code> using the default five-minute TTL. Engineers typically ask one question, act on the answer, and return 30 to 90 minutes later. Billing shows a cache write on most requests and very few cache reads, and each miss costs more than the answer itself. What is the most effective change?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Move the digest into the first user turn and set the breakpoint there, since user-turn content is cached more reliably than system content.",
+    "correct": false,
+    "explanation": "Cache retention does not depend on whether content sits in the system prompt or a user turn; both expire on the same TTL. Relocating the digest changes nothing about the 30 to 90 minute gaps that let the entry expire, so writes stay frequent and reads stay rare."
+   },
+   {
+    "letter": "B",
+    "text": "Add a scheduled request every four minutes that reads the digest, so the cache entry never expires between two engineer questions.",
+    "correct": false,
+    "explanation": "Keep-alive requests pay for cache reads around the clock, including nights and weekends when nobody asks anything, and they add a scheduler that must itself stay reliable. It re-creates a longer TTL with extra infrastructure when the API already offers one directly."
+   },
+   {
+    "letter": "C",
+    "text": "Cut the digest down to 15,000 tokens so each cache miss is cheaper, accepting less architectural context in every answer.",
+    "correct": false,
+    "explanation": "Trimming the digest lowers the price of every miss but does nothing about the miss rate, and it removes context the tool exists to provide. Answers about unfamiliar modules get worse while engineers still pay a full write on most questions."
+   },
+   {
+    "letter": "D",
+    "text": "Set <code>ttl</code> to <code>1h</code> on the digest's <code>cache_control</code> so the prefix outlives the gaps between questions.",
+    "correct": true,
+    "explanation": "The one-hour TTL is designed for exactly this pattern: expensive stable prefixes reused at intervals longer than five minutes. A write costs more than a five-minute write, but with questions 30 to 90 minutes apart most requests become cache reads of the 60,000-token digest, which the other options either fail to achieve or achieve only by adding standing infrastructure."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Structured Data Extraction",
+  "domain": "Context & Reliability",
+  "prompt": "Your extractor calls Claude with a <code>record_extraction</code> tool whose schema includes nested parties, clauses, and obligations; long contracts produce tool inputs of about 12,000 tokens. Roughly 4% of requests fail client-side with a read timeout after 60 seconds, always on the longest documents, and each retry hits the same timeout. Short documents extract without issue. What should change in the request handling?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Raise the HTTP client's read timeout to 15 minutes so the longest generations have enough time to finish before the client gives up.",
+    "correct": false,
+    "explanation": "A long non-streaming request holds an idle connection for minutes, and proxies or load balancers between you and the API can drop it well before 15 minutes regardless of your client setting. The SDKs steer away from long non-streaming generations for this reason, so this masks the symptom on some paths and not others."
+   },
+   {
+    "letter": "B",
+    "text": "Cap <code>max_tokens</code> at 4,000 so responses return within the timeout, and truncate obligation lists that do not fit.",
+    "correct": false,
+    "explanation": "Cutting the output budget guarantees the longest contracts return a tool input that stops mid-structure, so the JSON is invalid and the record is incomplete on exactly the documents that carry the most obligations. It trades a transport failure for a silent data-quality failure."
+   },
+   {
+    "letter": "C",
+    "text": "Split each long contract into two halves, extract each half separately, and merge the two records downstream.",
+    "correct": false,
+    "explanation": "Halving the document shortens each response, but clauses referencing parties or definitions in the other half lose their context, and merging two partial records means reconciling duplicated or conflicting fields. The transport problem is solved by changing the document, which degrades extraction accuracy."
+   },
+   {
+    "letter": "D",
+    "text": "Enable streaming and assemble the tool input from <code>input_json_delta</code> events, parsing when the message completes.",
+    "correct": true,
+    "explanation": "Streaming keeps bytes flowing from the first token, so the read timeout that trips on 60 seconds of silence no longer applies, and the full 12,000-token tool input arrives intact. Accumulating the <code>partial_json</code> fragments and parsing at the end preserves the schema and the whole document, which the other options give up in different ways."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Structured Data Extraction",
+  "domain": "Context & Reliability",
+  "prompt": "Since a schema change added a <code>line_items</code> array, about 3% of invoice extractions fail JSON parsing. Logs show these responses end in the middle of the array and report <code>stop_reason</code> of <code>max_tokens</code>; the request still uses <code>max_tokens: 1024</code> from the original prototype. The handler currently retries the identical request three times before dead-lettering the invoice. What is the correct fix?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Instruct the model in the system prompt to omit whitespace and shorten key names in the tool input so long invoices fit the limit.",
+    "correct": false,
+    "explanation": "Key names are fixed by the tool schema, so shortening them produces records that fail validation, and whitespace savings are marginal for a 40-line invoice. This squeezes output toward an arbitrary limit instead of setting the limit to fit the output the schema requires."
+   },
+   {
+    "letter": "B",
+    "text": "Raise <code>max_tokens</code> to fit the largest record and stop retrying when <code>stop_reason</code> is <code>max_tokens</code>.",
+    "correct": true,
+    "explanation": "The failure is deterministic: the same request with the same budget truncates at the same point, so the three retries only triple the cost of each failed invoice. Sizing <code>max_tokens</code> for the largest legitimate record removes the cause, and treating <code>max_tokens</code> as a non-retryable signal keeps retries for the transient errors they are meant for."
+   },
+   {
+    "letter": "C",
+    "text": "Keep the limit and add a second call that continues the JSON from where the first response stopped, then concatenate the two outputs.",
+    "correct": false,
+    "explanation": "Continuing a truncated tool input across calls is fragile: the join point can fall mid-token or mid-string, the second call has no guarantee of resuming the exact structure, and every long invoice now costs two requests. It engineers around a limit that a single parameter change would remove."
+   },
+   {
+    "letter": "D",
+    "text": "Move long invoices to the Message Batches API, where output limits are higher and this truncation no longer applies to them.",
+    "correct": false,
+    "explanation": "The Batches API applies the same <code>max_tokens</code> the request specifies; it changes pricing and latency, not output limits. The 1024-token budget would truncate the same invoices asynchronously, adding a wait for results without addressing the cause."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Structured Data Extraction",
+  "domain": "Context & Reliability",
+  "prompt": "Your interactive upload flow calls Claude synchronously while the user waits for a validation screen. At 9:00 each weekday about 300 field agents upload forms within a few minutes, and roughly a quarter of requests fail with HTTP 429 <code>rate_limit_error</code>. The handler retries instantly up to five times, which deepens the burst, and users see an extraction failed message. What should the handler do instead?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Queue requests behind a concurrency cap, back off with jitter honoring <code>retry-after</code>, and show pending.",
+    "correct": true,
+    "explanation": "The limit is a rate, so the fix is to shape the rate: a concurrency cap keeps in-flight requests under it, exponential backoff with jitter spreads the retries instead of synchronising them, and <code>retry-after</code> tells you exactly how long to wait. A visible pending state keeps the interaction honest while requests drain over a couple of minutes."
+   },
+   {
+    "letter": "B",
+    "text": "Route the 9:00 burst to the Message Batches API so the 429s disappear, and notify each user when their results are ready.",
+    "correct": false,
+    "explanation": "Batches are the right tool for work nobody is waiting on, but these users are sitting at a validation screen and batch results can take much longer than the minutes a queued burst needs to drain. It trades a transient error for a guaranteed long wait on an interactive path."
+   },
+   {
+    "letter": "C",
+    "text": "Add a fixed two-second sleep between every request to spread the load evenly, applied uniformly across the whole working day.",
+    "correct": false,
+    "explanation": "A fixed delay slows every off-peak request for no reason and is not tied to the actual limit, so at 9:00 it may still be too fast while at noon it is needlessly slow. It ignores the <code>retry-after</code> signal the API already provides and does not stop synchronised retries."
+   },
+   {
+    "letter": "D",
+    "text": "Split each form into smaller extraction calls per section so each request uses fewer tokens and stays under the limit.",
+    "correct": false,
+    "explanation": "Rate limits count requests as well as tokens, so turning one call into several during a burst multiplies the request rate and makes the 429s more likely, while adding merge logic for the partial records. The burst is a concurrency problem, not a per-request size problem."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Structured Data Extraction",
+  "domain": "Context & Reliability",
+  "prompt": "A backfill re-extracts 80,000 archived contracts with a new schema using 20 parallel workers over roughly ten hours, writing each result to the procurement database. Last night the host rebooted at about document 52,000. The job was restarted from the beginning, re-extracting the first 52,000 contracts at full API cost and writing duplicate rows for each of them. How should the job be made restartable?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Wrap the entire backfill in one database transaction so a crash rolls back cleanly and the rerun starts from a consistent state.",
+    "correct": false,
+    "explanation": "A single transaction guarantees consistency by discarding all ten hours of results on any failure, so every restart begins from zero and repays the full API cost. It removes the duplicate rows but keeps the expensive part of the failure, and a transaction that size is itself a reliability risk."
+   },
+   {
+    "letter": "B",
+    "text": "Record the offset of the last processed document in the input list every 1,000 documents and resume from that offset after a crash.",
+    "correct": false,
+    "explanation": "With 20 workers finishing out of order, a single offset does not describe which documents are done: some before it may be incomplete and some after it already written. Resuming from it still reprocesses and double-writes an unpredictable set, and up to 999 finished documents are redone every time."
+   },
+   {
+    "letter": "C",
+    "text": "Store a per-document status keyed by contract ID, write results idempotently, and have workers skip completed IDs on restart.",
+    "correct": true,
+    "explanation": "Per-document state is the unit that matches the work: each worker marks a contract done only after its idempotent write lands, so a restart skips exactly the finished set regardless of processing order and never duplicates a row. This turns a ten-hour loss into a resume of the remaining 28,000 documents, which neither an offset nor a transaction can do."
+   },
+   {
+    "letter": "D",
+    "text": "Split the input into eight shards of 10,000 documents and run them as separate jobs, so a crash only requires rerunning the affected shard.",
+    "correct": false,
+    "explanation": "Sharding bounds the blast radius but keeps the failure mode: a crash still reprocesses and double-writes up to 10,000 documents from the affected shard, and the job now needs orchestration to track which shards completed. It reduces the waste without making any individual document restartable."
+   }
+  ]
+ }
+]

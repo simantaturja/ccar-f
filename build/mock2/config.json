@@ -1,0 +1,405 @@
+[
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Claude Code Config",
+  "prompt": "Your test-generation job runs <code>claude -p \"Write unit tests for the changed modules and run them\"</code> on a GitHub Actions runner. The job completes, but the output says the tests were written and could not be executed because the <code>Bash</code> tool was not permitted, so every PR receives untested suggestions. You want the job to run <code>npm test</code> but not arbitrary shell commands. What should you change in the invocation?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Add <code>--dangerously-skip-permissions</code> so the headless run can execute whatever commands the test workflow needs on the ephemeral runner.",
+    "correct": false,
+    "explanation": "Skipping permissions on a runner that holds a checkout token and repository secrets grants unrestricted shell access for a job that only needs one command. The ephemeral runner limits blast radius but does not protect the repository or downstream services the runner can reach."
+   },
+   {
+    "letter": "B",
+    "text": "Keep the current flags and add an instruction to the prompt telling Claude it is authorized to run <code>npm test</code> in this environment.",
+    "correct": false,
+    "explanation": "Permission decisions are enforced by the harness, not by the model. Telling Claude in the prompt that it is authorized does nothing to the tool allowlist in non-interactive mode, so the <code>Bash</code> call is still denied and the run produces the same unexecuted tests."
+   },
+   {
+    "letter": "C",
+    "text": "Pass <code>--allowedTools \"Read,Grep,Glob,Write,Edit,Bash(npm test:*)\"</code> so only the test command is pre-approved for the run.",
+    "correct": true,
+    "explanation": "<code>--allowedTools</code> with a scoped <code>Bash(npm test:*)</code> pattern pre-approves exactly the command the job needs while leaving other shell commands blocked. This is how headless runs are meant to be granted narrow capabilities, and it avoids both the silent denial and the all-or-nothing alternative."
+   },
+   {
+    "letter": "D",
+    "text": "Run the job with <code>--permission-mode acceptEdits</code> so file writes and the test command are accepted automatically for the session.",
+    "correct": false,
+    "explanation": "<code>acceptEdits</code> auto-approves file edits only; <code>Bash</code> commands still require an explicit allow rule. The tests would be written as before, but <code>npm test</code> would remain denied, so the observed problem is unchanged."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Claude Code Config",
+  "prompt": "Your PR review job needs a strict reviewer persona: report only correctness and security findings, cite file and line, and skip style remarks. Developers who use Claude Code interactively in the same repository do not want this persona; they want the normal assistant that explains, refactors, and discusses style. Where should the CI-only review instructions live so they apply to the pipeline run but not to interactive sessions?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Pass them to the CI invocation with <code>--append-system-prompt</code>, keeping <code>CLAUDE.md</code> for shared project context.",
+    "correct": true,
+    "explanation": "<code>--append-system-prompt</code> layers instructions onto a single invocation without touching shared files, so the persona exists only for the pipeline run. Project context stays in <code>CLAUDE.md</code> where both CI and developers benefit, and nothing in the repository changes how interactive sessions behave."
+   },
+   {
+    "letter": "B",
+    "text": "Add a \"CI review mode\" section to the root <code>CLAUDE.md</code> that states the rules apply only when running non-interactively.",
+    "correct": false,
+    "explanation": "<code>CLAUDE.md</code> is loaded into every session in the repository, so the reviewer rules become instructions developers' sessions must read and interpret on each turn. A conditional written in prose relies on the model deciding whether it is in CI, and it dilutes the shared file with content most readers never want."
+   },
+   {
+    "letter": "C",
+    "text": "Place them in <code>~/.claude/CLAUDE.md</code> on the CI runner image so the runner loads them while developer machines do not.",
+    "correct": false,
+    "explanation": "Baking instructions into the runner's user-level memory file couples review behavior to an image nobody reviews alongside the pipeline, and it applies to every job the runner executes, not just PR review. It also disappears silently when the runner image is rebuilt or the job moves to a different pool."
+   },
+   {
+    "letter": "D",
+    "text": "Create a committed <code>.claude/commands/ci-review.md</code> command holding the rules and invoke it from both CI and developer sessions.",
+    "correct": false,
+    "explanation": "A committed command does isolate the rules from default sessions, but the stem does not ask developers to run reviews, and the pipeline still needs a way to invoke it headlessly. It adds a shared artifact for a persona that is only meant to exist in the pipeline, when a per-invocation flag already scopes it correctly."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Claude Code Config",
+  "prompt": "Your review prompt tells Claude to check the PR's linked issue via a GitHub MCP server declared in the committed <code>.mcp.json</code>. On developer laptops the server works after a one-time approval prompt, but in the headless CI run Claude reports that no GitHub tools are available and the review proceeds without issue context. The <code>.mcp.json</code> is present in the checkout. What is the most likely fix?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Move the server definition into <code>~/.claude.json</code> on the runner with <code>claude mcp add --scope user</code> so it loads without a project trust prompt.",
+    "correct": false,
+    "explanation": "User-scoped registration on the runner works around the problem by taking the server configuration out of version control, so the committed <code>.mcp.json</code> and the runner drift independently. The team loses the single reviewed definition that the shared project file was meant to provide."
+   },
+   {
+    "letter": "B",
+    "text": "Add an instruction to the review prompt telling Claude to call the GitHub MCP tools for the linked issue before it begins reviewing the diff.",
+    "correct": false,
+    "explanation": "The tools are not being refused by the model; they are not loaded. Project-scoped servers that have not been approved are not exposed at all, so no prompt wording makes them appear. The instruction only adds a request Claude cannot fulfil."
+   },
+   {
+    "letter": "C",
+    "text": "Have the CI step run <code>claude mcp list</code> before the review so the project servers are registered and cached for the following session.",
+    "correct": false,
+    "explanation": "<code>claude mcp list</code> reports configured servers; it does not approve them. Project-scoped servers still require approval before they are exposed to a session, so the subsequent <code>claude -p</code> run sees the same empty tool set."
+   },
+   {
+    "letter": "D",
+    "text": "Set <code>\"enableAllProjectMcpServers\": true</code> in the committed <code>.claude/settings.json</code> so <code>.mcp.json</code> servers load without a prompt.",
+    "correct": true,
+    "explanation": "Project-scoped <code>.mcp.json</code> servers require approval before use, and the interactive prompt that grants it never appears in a headless run. <code>enableAllProjectMcpServers</code> in project settings supplies that approval declaratively, so the committed configuration loads identically on laptops and in CI."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Claude Code Config",
+  "prompt": "A CI job runs <code>claude -p</code> to generate tests for changed files and iterate until they pass. Most runs finish in 4 to 6 minutes, but roughly one in fifteen enters a loop of editing a test, running it, and editing again for 40 minutes until the workflow's hard timeout kills the process, leaving no output to post. You need runs to end with a usable result even when Claude cannot converge. Which change addresses this most directly?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Lower the workflow timeout from 45 minutes to 10 minutes so runaway runs are cut off before they consume the runner budget.",
+    "correct": false,
+    "explanation": "A shorter CI timeout kills the process the same way, just earlier, so the run still ends with no JSON result and nothing to post. It caps cost but does not produce the usable partial output the stem asks for."
+   },
+   {
+    "letter": "B",
+    "text": "Add <code>--max-turns 30</code> to the invocation so the agent loop stops and returns its final message after a bounded number of tool turns.",
+    "correct": true,
+    "explanation": "<code>--max-turns</code> bounds the agentic loop inside Claude Code, so when the cap is reached the process returns normally with its final message and result envelope instead of being killed. The job can then post whatever tests were produced and flag that convergence was not reached."
+   },
+   {
+    "letter": "C",
+    "text": "Instruct the prompt to give up after five failed test runs and report the remaining failures instead of continuing to edit.",
+    "correct": false,
+    "explanation": "A prose limit depends on the model counting attempts and honouring the rule in the middle of a long loop, which is exactly the situation where it is already failing to stop. It is a reasonable addition but is not an enforced boundary and does not guarantee the run ends with a result."
+   },
+   {
+    "letter": "D",
+    "text": "Configure a <code>Stop</code> hook that inspects the transcript and exits non-zero when the same test file has been edited more than five times.",
+    "correct": false,
+    "explanation": "A <code>Stop</code> hook fires when Claude is about to finish, and a non-zero blocking exit tells it to continue working. It cannot terminate a run that is not stopping, so it is the wrong lifecycle point for capping a loop that never reaches the stop event."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Claude Code Config",
+  "prompt": "During a review run, Claude Code corrected a typo in a source file and committed it to the PR branch alongside its findings. Your security team now requires a hard guarantee that the review job can read the repository and run the linter but can never modify files or run <code>git push</code>, regardless of prompt content. The job is invoked with <code>claude -p</code> from a committed workflow. What is the most appropriate configuration?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Add <code>Edit</code>, <code>Write</code>, and <code>Bash(git push:*)</code> to <code>permissions.deny</code> in the committed <code>.claude/settings.json</code> so the rules ship with the workflow.",
+    "correct": true,
+    "explanation": "Deny rules in settings are enforced by the harness before a tool runs, take precedence over allow rules, and live in version control next to the workflow that depends on them. That gives the security team an auditable, prompt-independent guarantee that edits and pushes cannot happen."
+   },
+   {
+    "letter": "B",
+    "text": "Add a prominent instruction to the review prompt and to <code>CLAUDE.md</code> stating that the reviewer must never edit files or push commits.",
+    "correct": false,
+    "explanation": "The incident happened with instructions already in place to review rather than fix, which shows that prose guidance is advisory. The requirement is a hard guarantee independent of prompt content, and instructions the model interprets cannot provide that."
+   },
+   {
+    "letter": "C",
+    "text": "Run the job with <code>--permission-mode plan</code> so Claude analyses the repository and proposes changes without executing any of them.",
+    "correct": false,
+    "explanation": "Plan mode restricts Claude to read-only exploration, which also blocks running the linter the job depends on. It over-constrains the run by removing a permitted capability rather than denying the specific actions the security team cares about."
+   },
+   {
+    "letter": "D",
+    "text": "Check out the repository read-only on the runner and use a token without push scope so edits and pushes fail at the OS or GitHub layer.",
+    "correct": false,
+    "explanation": "Filesystem and token restrictions are useful defence in depth, but Claude would still attempt edits, receive errors, and spend turns working around them, and a read-only checkout can break the linter's cache writes. The guarantee should be expressed where the tool call is decided."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Claude Code for Continuous Integration",
+  "domain": "Claude Code Config",
+  "prompt": "Finance asks for per-PR spend and turn counts from your review pipeline so they can compare the cost of reviewing small and large PRs. Today the job captures Claude's plain text stdout and posts it as a comment; there is no cost figure anywhere in the logs. You want reliable numbers without parsing prose. Which approach gives you the data with the least fragility?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Switch to <code>--output-format stream-json</code> and sum the token usage fields from each assistant message event as the job runs.",
+    "correct": false,
+    "explanation": "Streaming events do carry usage data, but summing per-message tokens and converting to dollars yourself re-implements accounting the CLI already performs, and the stream format is meant for consumers that need incremental events. It is more code and more surface for drift than reading the final envelope."
+   },
+   {
+    "letter": "B",
+    "text": "Query the Anthropic Console usage report filtered by the CI API key after each run and attribute the delta to that PR.",
+    "correct": false,
+    "explanation": "Console usage is aggregated per key and lags behind individual requests, so concurrent review jobs sharing the key cannot be attributed to a single PR by timing alone. It is the right tool for monthly totals, not per-run figures."
+   },
+   {
+    "letter": "C",
+    "text": "Ask Claude in the prompt to end its review with a line reporting how many turns it used and its estimated dollar cost for the run.",
+    "correct": false,
+    "explanation": "The model has no reliable view of billed tokens or pricing, so any figure it writes is a guess, and the pipeline is back to parsing prose for a number that may be missing or wrong. This trades one fragile parse for another."
+   },
+   {
+    "letter": "D",
+    "text": "Use <code>--output-format json</code> and read <code>total_cost_usd</code> and <code>num_turns</code> from the result envelope the CLI prints at the end of each run.",
+    "correct": true,
+    "explanation": "The JSON result envelope from a headless run includes the cost and turn metadata computed by the CLI itself, so the job reads structured fields rather than parsing text. Posting the <code>result</code> field for the comment and shipping the metadata to finance requires no extra tooling."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Developer Productivity with Claude",
+  "domain": "Claude Code Config",
+  "prompt": "An engineer keeps notes that make Claude Code far more useful for her in the payments repository: the path to her local database dump, the URL of her personal staging tenant, and a reminder that her sandbox account is <code>acct_9f2</code>. She pasted them into the project's <code>CLAUDE.md</code>, and a colleague objected in review because the values are personal and one of them is semi-sensitive. Where should these notes live so Claude still loads them in this repository?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Put them in <code>~/.claude/CLAUDE.md</code>, which is private to her machine and never enters the repository.",
+    "correct": false,
+    "explanation": "The user-level memory file is loaded in every project she opens, so payments-specific paths and account IDs would appear in unrelated repositories and add noise there. It solves privacy but loses the per-repository scoping the notes need."
+   },
+   {
+    "letter": "B",
+    "text": "Move them to a <code>CLAUDE.local.md</code> in the repository root and keep that file out of version control.",
+    "correct": true,
+    "explanation": "<code>CLAUDE.local.md</code> is loaded alongside the project's <code>CLAUDE.md</code> for the same repository but is designed to be ignored by git, so per-developer context stays scoped to the project without being shared. It is the intended home for exactly this kind of personal note."
+   },
+   {
+    "letter": "C",
+    "text": "Keep them in the shared <code>CLAUDE.md</code> under a clearly labelled personal section that other engineers are told to skip.",
+    "correct": false,
+    "explanation": "A labelled section still ships her staging URL and sandbox ID to every clone and into every teammate's context, which was the reviewer's objection. Prose asking readers to skip content does not stop Claude from loading it for everyone."
+   },
+   {
+    "letter": "D",
+    "text": "Store them as <code>env</code> entries in <code>.claude/settings.local.json</code> so they are available to Claude without being committed.",
+    "correct": false,
+    "explanation": "<code>settings.local.json</code> is the right uncommitted location for permissions and environment variables, but environment values are not instructions Claude reads as context. She wants prose guidance loaded into the session, which is a memory file concern."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Developer Productivity with Claude",
+  "domain": "Claude Code Config",
+  "prompt": "Engineers on a twelve-person team report that Claude Code interrupts them several times a session to approve the same harmless commands: <code>npm test</code>, <code>npm run lint</code>, <code>git status</code>, and <code>git diff</code>. Each developer has been clicking \"allow for this session\" repeatedly, and two have started launching with <code>--dangerously-skip-permissions</code> to avoid it. You want the prompts gone for these commands, consistently, for everyone. What should you do?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Ask each engineer to add the four commands to their own <code>.claude/settings.local.json</code> allow list so their individual sessions stop prompting.",
+    "correct": false,
+    "explanation": "Per-developer local settings do remove the prompts, but twelve copies drift, new joiners repeat the setup, and nothing in review governs what people allow. The team already has two engineers improvising around the friction, which shows individual fixes are not holding."
+   },
+   {
+    "letter": "B",
+    "text": "Set <code>\"defaultMode\": \"acceptEdits\"</code> in the committed project settings so routine tool calls stop requiring a confirmation each time.",
+    "correct": false,
+    "explanation": "<code>acceptEdits</code> only auto-approves file edits; <code>Bash</code> commands such as <code>npm test</code> and <code>git diff</code> still prompt. It changes an unrelated behaviour, loosening edit approval, while leaving the reported interruptions in place."
+   },
+   {
+    "letter": "C",
+    "text": "Add <code>Bash(npm test:*)</code>, <code>Bash(git status:*)</code>, and the other two to <code>permissions.allow</code> in the committed <code>.claude/settings.json</code>.",
+    "correct": true,
+    "explanation": "Allow rules in the project-scoped, version-controlled settings apply to every clone, so the whole team stops being prompted for the same four commands while everything else keeps its normal approval. It is reviewable, consistent, and removes the incentive to skip permissions altogether."
+   },
+   {
+    "letter": "D",
+    "text": "Document in <code>CLAUDE.md</code> that these commands are safe to run so Claude batches them together and asks for approval once rather than repeatedly.",
+    "correct": false,
+    "explanation": "Permission prompts are generated by the harness for each matching tool call; guidance in <code>CLAUDE.md</code> cannot change whether a prompt appears. The instruction may alter how Claude phrases requests but does not touch the approval mechanism."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Developer Productivity with Claude",
+  "domain": "Claude Code Config",
+  "prompt": "You created a <code>.claude/agents/legacy-explorer.md</code> subagent that maps unfamiliar modules and returns a summary so the main session stays uncluttered. Its description says it is read-only, yet in two sessions it renamed a helper and edited a config file while exploring, surprising the engineer. You want the explorer to be incapable of modifying files while the main session keeps full editing ability. What is the right change?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Set <code>tools: Read, Grep, Glob</code> in the subagent's frontmatter so it is never given editing or shell tools in the first place.",
+    "correct": true,
+    "explanation": "The <code>tools</code> field in the agent definition controls which tools the subagent can call at all, so omitting <code>Edit</code>, <code>Write</code>, and <code>Bash</code> makes modification impossible rather than discouraged. The restriction applies only to that agent, so the main session is unaffected."
+   },
+   {
+    "letter": "B",
+    "text": "Add <code>Edit</code> and <code>Write</code> to <code>permissions.deny</code> in the project's <code>.claude/settings.json</code> so file changes are blocked.",
+    "correct": false,
+    "explanation": "Project-level deny rules apply to every session and every subagent in the repository, so the main session would lose the editing ability the engineer needs. The constraint belongs on the one agent that should not edit, not on the whole project."
+   },
+   {
+    "letter": "C",
+    "text": "Strengthen the subagent's system prompt with explicit instructions that it must only read and must refuse any change, including trivial fixes.",
+    "correct": false,
+    "explanation": "The description already says read-only and the subagent edited anyway, so more forceful wording addresses the symptom with the same mechanism that failed. Prompt text sets expectations; it does not remove a capability."
+   },
+   {
+    "letter": "D",
+    "text": "Register a <code>PreToolUse</code> hook matching <code>Edit|Write</code> that exits with code 2 whenever the transcript path indicates a subagent is running.",
+    "correct": false,
+    "explanation": "A hook can block edits, but inferring which agent is calling from transcript paths is brittle and adds a script to maintain for a restriction the agent definition expresses in one line. It would also block every subagent, not just the explorer."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Developer Productivity with Claude",
+  "domain": "Claude Code Config",
+  "prompt": "Engineers on a platform team start nearly every Claude Code session by pasting the output of <code>make env-status</code>, which prints the active cluster context, the feature branch's migration state, and any locally overridden service URLs. The output changes daily, so it cannot be written into <code>CLAUDE.md</code>. They want this information available to Claude from the first message without pasting. Which mechanism fits?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Create a <code>/env</code> slash command whose body runs <code>!`make env-status`</code> and ask engineers to invoke it as their first message.",
+    "correct": false,
+    "explanation": "A command with inline bash does inject fresh output, but it replaces one manual first step with another, and engineers who forget it get a session without the context. The stem asks for the information to be present without an action at session start."
+   },
+   {
+    "letter": "B",
+    "text": "Add a <code>UserPromptSubmit</code> hook that runs <code>make env-status</code> and prints it so the current status accompanies every prompt sent.",
+    "correct": false,
+    "explanation": "Attaching the status to every prompt re-runs the command and re-injects the same block on each turn, growing context with duplicates of information that changes daily, not per message. Once per session is the right cadence."
+   },
+   {
+    "letter": "C",
+    "text": "Keep a <code>CLAUDE.md</code> instruction telling Claude to run <code>make env-status</code> via <code>Bash</code> before doing anything else in the session.",
+    "correct": false,
+    "explanation": "An instruction to run the command shifts the work to the model, which costs a turn and a permission prompt and may be skipped when the first request looks unrelated to the environment. It is guidance, not a guarantee that the context is loaded."
+   },
+   {
+    "letter": "D",
+    "text": "Add a <code>SessionStart</code> hook in the project <code>.claude/settings.json</code> that runs <code>make env-status</code>; its stdout becomes context.",
+    "correct": true,
+    "explanation": "A <code>SessionStart</code> hook runs once when a session begins and whatever it writes to stdout becomes context for Claude, which is precisely the dynamic-at-start requirement. Because it lives in project settings, every engineer on the team gets it without remembering a step."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Developer Productivity with Claude",
+  "domain": "Claude Code Config",
+  "prompt": "Your team's <code>/scaffold-service</code> slash command generates boilerplate for a new microservice. It works, but engineers must hand-type the current branch name and the list of existing services so the generated code follows naming conventions, and they frequently mistype them. Both values are available from <code>git branch --show-current</code> and <code>ls services/</code>. How should the command file be changed so the values are always accurate?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Document both shell commands in the command's <code>description</code> frontmatter so Claude knows to run them itself before scaffolding anything.",
+    "correct": false,
+    "explanation": "The <code>description</code> field is shown in the command listing and used for discovery; it is not part of the prompt sent when the command runs. Claude may or may not run the commands, and doing so costs turns and permission prompts for values that could have been injected directly."
+   },
+   {
+    "letter": "B",
+    "text": "Embed <code>!`git branch --show-current`</code> and <code>!`ls services/`</code> in the command body so their output is substituted into the prompt.",
+    "correct": true,
+    "explanation": "Inline bash execution in a slash command runs the referenced commands at invocation time and places their stdout into the prompt, so the branch name and service list are always current and never typed by hand. The command stays a single file with no extra step for the engineer."
+   },
+   {
+    "letter": "C",
+    "text": "Add <code>argument-hint: [branch] [services]</code> to the frontmatter so engineers see the expected inputs clearly and stop mistyping them.",
+    "correct": false,
+    "explanation": "An argument hint improves the prompt for what to type but leaves the values as manual input, which is where the errors originate. It reduces confusion about the format without removing the transcription step that causes mistakes."
+   },
+   {
+    "letter": "D",
+    "text": "Store the branch name and service list in <code>CLAUDE.md</code> and instruct engineers to update the file when they add a service or switch branches.",
+    "correct": false,
+    "explanation": "The branch changes many times a day and the service list changes on every scaffold, so a static memory file is stale almost immediately and shifts the mistyping problem into a file edit. Values derivable from the working tree should be computed, not maintained by hand."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Structured Data Extraction",
+  "domain": "Claude Code Config",
+  "prompt": "Your extraction repository keeps one JSON Schema per document type under <code>schemas/</code>. Claude Code edits these schemas frequently while adding fields, and twice this month a schema with an invalid <code>$ref</code> reached CI and broke the nightly extraction run. You want Claude to learn about an invalid schema immediately after it saves the file and fix it in the same session, without relying on it remembering to validate. What should you configure?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Add a <code>CLAUDE.md</code> rule that every schema change must be followed by running <code>npm run validate-schemas</code> before any further work continues.",
+    "correct": false,
+    "explanation": "A memory rule depends on Claude recalling and applying it after each edit, which is the reliance the stem wants to remove. It works most of the time, but the two incidents show that occasional misses are enough to break the nightly run."
+   },
+   {
+    "letter": "B",
+    "text": "Add a <code>Stop</code> hook that runs the schema validator when Claude finishes and blocks the stop with the error output if any schema is invalid.",
+    "correct": false,
+    "explanation": "A <code>Stop</code> hook catches the problem only at the end of the turn, after Claude may have built further changes on the broken schema, and it gives feedback far from the edit that caused it. Validation at the moment of the write is more actionable."
+   },
+   {
+    "letter": "C",
+    "text": "Add a <code>PostToolUse</code> hook on <code>Edit|Write</code> that validates files under <code>schemas/</code> and exits 2 with the error on failure.",
+    "correct": true,
+    "explanation": "A <code>PostToolUse</code> hook fires right after the edit completes, and exiting with code 2 feeds the stderr message back to Claude so it sees the invalid <code>$ref</code> immediately and can fix it in the same session. It is deterministic and independent of whether Claude remembers to validate."
+   },
+   {
+    "letter": "D",
+    "text": "Add a <code>PreToolUse</code> hook matching <code>Edit|Write</code> that rejects the call unless the proposed schema content already passes the validator.",
+    "correct": false,
+    "explanation": "Validating before the write means the hook must reconstruct the file's post-edit content from the tool input, which for an <code>Edit</code> is a partial replacement rather than a full document. It is fragile for this use and blocks the edit instead of letting Claude see and correct the actual result."
+   }
+  ]
+ },
+ {
+  "scenarioTitle": "Structured Data Extraction",
+  "domain": "Claude Code Config",
+  "prompt": "Your extraction repository at <code>~/work/extractor</code> keeps its 2 GB corpus of fixture PDFs and gold-label JSON in a sibling directory, <code>~/work/extraction-fixtures</code>, so the repo stays small. When engineers ask Claude Code to compare an extractor's output against gold labels, it reports that it cannot read files outside the project directory, and engineers resort to copying fixtures into the repo. How should access be granted?",
+  "options": [
+   {
+    "letter": "A",
+    "text": "Add a <code>fixtures</code> symlink inside the repository pointing at <code>~/work/extraction-fixtures</code> so the files appear under the project path.",
+    "correct": false,
+    "explanation": "A symlink pointing outside the working directory still resolves to a path Claude Code treats as external, so reads may still be refused or prompted, and the symlink itself becomes a committed artifact that breaks on machines with different directory layouts."
+   },
+   {
+    "letter": "B",
+    "text": "Move the fixture corpus into the repository under <code>test/fixtures/</code> and rely on Git LFS to keep the checkout size manageable for everyone.",
+    "correct": false,
+    "explanation": "Restructuring the repository and introducing LFS to solve an access-scope question changes how every engineer and CI job checks out the project. The team deliberately kept the corpus separate, and the tooling already supports additional directories without moving data."
+   },
+   {
+    "letter": "C",
+    "text": "Launch Claude Code from <code>~/work</code> instead so both directories sit inside the working tree and all reads are permitted by default.",
+    "correct": false,
+    "explanation": "Starting one level up makes the parent the project root, so the repository's <code>CLAUDE.md</code>, <code>.claude/settings.json</code>, and <code>.mcp.json</code> are no longer picked up as the project configuration, and every other directory under <code>~/work</code> becomes readable too."
+   },
+   {
+    "letter": "D",
+    "text": "Add <code>~/work/extraction-fixtures</code> to <code>permissions.additionalDirectories</code> in the project <code>.claude/settings.json</code>.",
+    "correct": true,
+    "explanation": "<code>additionalDirectories</code> (or <code>--add-dir</code> at launch) extends Claude Code's working scope to exactly the paths you name while the repository stays the project root, so <code>CLAUDE.md</code> and settings still load. Persisting it in project settings gives every engineer the same access without copying files or restructuring the repo."
+   }
+  ]
+ }
+]

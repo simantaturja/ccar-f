@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exam</title>
+<link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+<div class="exam">
+  <div class="topbar">
+    <a href="./" class="muted">← Dashboard</a>
+    <h1 id="title"></h1>
+    <div id="status"></div>
+    <button id="pauseBtn">⏸ Pause</button>
+    <button id="submitBtn" class="btn-primary">Submit exam</button>
+    <button id="reopenBtn" hidden title="Answer the remaining questions; earlier answers stay locked">▶ Resume unanswered</button>
+    <button id="resetBtn" class="btn-danger" hidden>Reset exam</button>
+  </div>
+  <div class="overlay" id="overlay" hidden>
+    <div class="overlay-card">
+      <h2>Paused</h2>
+      <div class="timer paused" id="overlayTimer"></div>
+      <button id="resumeBtn" class="btn-primary">▶ Resume</button>
+    </div>
+  </div>
+  <div class="panes">
+    <aside class="pane left" id="scenario"></aside>
+    <main class="pane right" id="main"></main>
+  </div>
+  <div class="bottombar">
+    <button id="prevBtn">◀ Prev</button>
+    <div class="nav" id="nav"></div>
+    <div class="filters" id="filters"></div>
+    <button id="nextBtn">Next ▶</button>
+  </div>
+</div>
+<script type="module" src="./js/exam.js"></script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+[
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Context & Reliability",
+    "prompt": "A customer opens with \"I want to speak to a human about my refund.\" The agent replies that it can help, calls <code>get_customer</code> and <code>lookup_order</code>, and offers a resolution. The customer repeats the request twice more before the agent finally calls <code>escalate_to_human</code>. Complaints about this pattern are rising, even though the agent's proposed resolutions were often correct. How should the agent behave?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Continue attempting resolution first, since correct autonomous resolutions protect the 80% first-contact target, and escalate only if the customer asks a third time.",
+        "correct": false,
+        "explanation": "Overriding an explicit request for a human damages trust and generates exactly the complaints being observed; resolution rate gained this way is not the kind the target is meant to measure. Explicit requests are a defined escalation trigger, not an obstacle to work around."
+      },
+      {
+        "letter": "B",
+        "text": "Detect negative sentiment in the opening message and escalate whenever frustration is detected, regardless of what the customer asks for.",
+        "correct": false,
+        "explanation": "Sentiment is an unreliable proxy: many frustrated customers want a fast fix rather than a human, and a calm customer may still explicitly ask for one. Routing on emotion rather than on the stated request would over-escalate some cases and still miss the explicit ask here."
+      },
+      {
+        "letter": "C",
+        "text": "Escalate after gathering customer and order details, so the human receives a complete handoff summary and the customer does not have to repeat themselves.",
+        "correct": false,
+        "explanation": "A good handoff summary is valuable, but it does not require offering a resolution or delaying the escalation across several turns. Identity and order lookups can be run in the same turn as <code>escalate_to_human</code>; the agent should not attempt to resolve first."
+      },
+      {
+        "letter": "D",
+        "text": "Honour an explicit request for a human immediately, without attempting resolution; use offer-then-escalate only for frustration without such a request.",
+        "correct": true,
+        "explanation": "An explicit demand for a human is one of the clear escalation triggers and should be honoured at once. The offer-to-resolve-first approach is appropriate when a customer is frustrated but has not asked for a person, escalating only if they reiterate. Distinguishing the two cases removes the complaints without sacrificing resolution on cases the agent should handle."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Context & Reliability",
+    "prompt": "Each <code>lookup_order</code> result returns 40+ fields, including warehouse routing codes, internal SKUs, and carrier telemetry, when the agent typically needs order date, items, amount, status, and return eligibility. Customers with several orders exhaust the context after about six lookups, and quality degrades before the case is resolved. The MCP server belongs to another team. What is the most effective fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Trim each <code>lookup_order</code> result to the return-relevant fields before it enters the conversation, for example in a <code>PostToolUse</code> hook.",
+        "correct": true,
+        "explanation": "Tool results consume context out of proportion to their relevance, and six 40-field payloads crowd out the conversation the agent needs. Filtering results down to the fields the workflow actually uses, at the point they enter context, cuts the footprint by an order of magnitude without depending on the owning team to change the tool."
+      },
+      {
+        "letter": "B",
+        "text": "Summarise the conversation more aggressively when context reaches 60% so more lookups fit before the limit.",
+        "correct": false,
+        "explanation": "Compacting the dialogue to make room for verbose tool payloads sacrifices customer-stated details, such as amounts and expectations, to preserve warehouse routing codes nobody uses. The waste should be removed at its source rather than accommodated."
+      },
+      {
+        "letter": "C",
+        "text": "Instruct the agent to call <code>lookup_order</code> at most three times per conversation and ask the customer to prioritise which orders matter.",
+        "correct": false,
+        "explanation": "Capping lookups pushes work onto the customer and prevents the agent from resolving legitimate multi-order cases, lowering first-contact resolution. The limit exists only because each result is bloated, which is the fixable problem."
+      },
+      {
+        "letter": "D",
+        "text": "Ask the owning team to add a <code>fields</code> parameter to <code>lookup_order</code> so the agent can request only the columns it needs.",
+        "correct": false,
+        "explanation": "A projection parameter is a reasonable long-term request, but it depends on another team's roadmap and still relies on the agent choosing the fields correctly each call. Trimming on your side of the boundary works today and is independent of the server's interface."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Context & Reliability",
+    "prompt": "Two hours into a session exploring a 900-file legacy application, Claude begins describing \"typical repository patterns\" and \"the usual service layer\" instead of the concrete <code>OrderRepository</code> and <code>PricingService</code> classes it read and discussed earlier. When asked where discounts are applied, it gives a different answer than it did an hour ago. What is the most effective way to counteract this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Have Claude keep a scratchpad file of key findings, class names, and file locations as it explores, and consult it for later questions.",
+        "correct": true,
+        "explanation": "The symptoms describe context degradation: specific discoveries have been pushed out or diluted, so the model falls back to generic patterns. A scratchpad file persists the concrete findings outside the conversation window, so later questions are answered from recorded facts rather than from fading memory, and the record survives compaction."
+      },
+      {
+        "letter": "B",
+        "text": "Restart the session and re-explore the codebase from the beginning so the concrete details are fresh in context again.",
+        "correct": false,
+        "explanation": "Re-exploration recovers the details temporarily and then degrades in exactly the same way two hours later, at the cost of repeating all the work. It treats the symptom on a schedule instead of preserving what was learned."
+      },
+      {
+        "letter": "C",
+        "text": "Ask Claude to recall the specific classes it read earlier and correct its answer, reminding it not to generalise.",
+        "correct": false,
+        "explanation": "If the specifics have fallen out of usable context, asking the model to recall them invites confident reconstruction rather than retrieval, which is how the contradictory answers arose. The facts need to be somewhere the model can read, not somewhere it must remember."
+      },
+      {
+        "letter": "D",
+        "text": "Increase verbosity so Claude quotes more of each file it reads, keeping the concrete code visible in the conversation for longer.",
+        "correct": false,
+        "explanation": "Quoting more per file accelerates context consumption and brings the degradation on sooner. The goal is to retain distilled findings, not raw file contents; more raw text is the opposite of what is needed."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Context & Reliability",
+    "prompt": "A multi-agent refactoring run, with a coordinator and three subagents each owning a service, crashed three hours in when a subagent hit a rate limit. On restart, the coordinator had no record of which files had been analysed or changed, so the team re-ran from scratch. Such long runs are now routine. How should you design for recovery?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add automatic retry with backoff in each subagent so rate limits no longer crash the run, and accept restarts from scratch for other failure types.",
+        "correct": false,
+        "explanation": "Retrying rate limits is worth doing but addresses only one cause; process crashes, timeouts, and infrastructure restarts will still discard three hours of progress. The requirement is to make progress durable, not to prevent a single failure type."
+      },
+      {
+        "letter": "B",
+        "text": "Resume the coordinator's session with <code>--resume</code> after a crash so its conversation history restores the run's state.",
+        "correct": false,
+        "explanation": "Resuming restores the coordinator's dialogue, but the subagents' findings and partial edits live in their own isolated contexts and the file system, not in the coordinator's history. A resumed coordinator would still have no reliable view of what each subagent completed."
+      },
+      {
+        "letter": "C",
+        "text": "Commit to git after every file change so a restart can inspect the diff to infer what has already been done.",
+        "correct": false,
+        "explanation": "Commits capture code changes but not the analysis, decisions, and remaining plan behind them; on restart the agents would have to rediscover why each change was made and what was still pending. The file system state is necessary but not sufficient for recovery."
+      },
+      {
+        "letter": "D",
+        "text": "Have each agent export structured state to a known location; on resume the coordinator loads a manifest and injects it into each subagent's prompt.",
+        "correct": true,
+        "explanation": "Structured state persistence is the crash recovery pattern for long multi-agent runs: each agent writes what it has analysed, changed, and still has to do, and the coordinator reads a manifest on restart and passes each subagent its own saved state. Work resumes from the last checkpoint instead of from zero, regardless of what caused the crash."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Context & Reliability",
+    "prompt": "Final reports contain statements such as \"industry sources estimate 30% adoption\" with no identifiable source, even though the web search subagent's logs show the figure came from a specific named survey. Tracing the pipeline, each agent summarised the previous agent's output in prose, and the source names disappeared somewhere between search and synthesis. What is the most effective remedy?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Have the report generation agent re-search each unattributed claim at the end and attach whatever source it finds.",
+        "correct": false,
+        "explanation": "Re-searching after the fact is expensive, may find a different source than the one actually used, and risks attaching a citation that does not support the exact figure. Provenance should be preserved through the pipeline, not reconstructed at the end."
+      },
+      {
+        "letter": "B",
+        "text": "Pass the raw search results and full documents to the synthesis agent alongside the summaries so it can look up sources itself.",
+        "correct": false,
+        "explanation": "Raw content would overflow the synthesis agent's context budget and still leaves it to re-derive which source supports which claim. The problem is that the mapping was dropped; the fix is to carry the mapping, not to carry everything."
+      },
+      {
+        "letter": "C",
+        "text": "Instruct the synthesis agent to write \"source unavailable\" wherever attribution is missing so readers know which claims are unverified.",
+        "correct": false,
+        "explanation": "Labelling the gap is more honest than a vague attribution but leaves the report weaker than the evidence actually gathered. The source was known upstream; discarding it and then flagging its absence is a process failure made visible, not fixed."
+      },
+      {
+        "letter": "D",
+        "text": "Require each subagent to output structured claim-source mappings (URL, document name, excerpt) that downstream agents preserve and merge.",
+        "correct": true,
+        "explanation": "Attribution is lost when findings are compressed into prose without their sources. Structured claim-source mappings separate content from metadata so each summarisation step carries the source forward, and the synthesis agent merges rather than discards them. The named survey then appears in the final report next to the figure it supports."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Context & Reliability",
+    "prompt": "A report on a regional market flags a \"major contradiction between sources\": one estimates the market at $4 billion, another at $9 billion. A reviewer notes the first figure is from a 2019 report and the second from a 2025 report describing growth in between. The subagents' outputs contain the figures and source names but no dates, so the synthesis agent treated them as conflicting. What change prevents this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Require subagents to include the publication or data collection date with each finding in their structured output.",
+        "correct": true,
+        "explanation": "Temporal differences are misread as contradictions when dates are missing. With publication or collection dates attached to each finding, the synthesis agent can present the two figures as a time series showing growth rather than as a conflict, and readers can judge recency themselves."
+      },
+      {
+        "letter": "B",
+        "text": "Instruct the synthesis agent to prefer the most recent source whenever figures disagree and omit the older value.",
+        "correct": false,
+        "explanation": "The synthesis agent cannot know which source is more recent without the dates, and even with them, dropping the older value hides a growth trend that is itself a finding. Recency preference is a policy that still needs the temporal metadata this fix supplies."
+      },
+      {
+        "letter": "C",
+        "text": "Have the web search subagent exclude any source older than three years so outdated figures do not reach synthesis.",
+        "correct": false,
+        "explanation": "A hard age cutoff discards historical data that many research questions depend on, including trend analysis, and it does nothing for two sources of different dates inside the window. Dating the findings is more useful than deleting them."
+      },
+      {
+        "letter": "D",
+        "text": "Route every detected contradiction to a human reviewer before the report is finalised so misreadings are caught manually.",
+        "correct": false,
+        "explanation": "Human review of every conflict would catch this one but at the cost of a manual step on a large share of reports, for a problem the pipeline can resolve itself by carrying dates. Reserve human review for genuine conflicts that dates and attribution cannot explain."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Context & Reliability",
+    "prompt": "Your extraction pipeline reports 97% field-level accuracy on a labelled validation set of 3,000 documents. Leadership wants to remove human review for all extractions with model confidence above 0.9 to cut costs by 60%. The validation set is dominated by standard invoices; medical claim forms and handwritten receipts together make up 8% of it. What should you do before agreeing?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Approve the plan, since 97% overall accuracy exceeds the team's 95% target and the confidence threshold adds a further safety margin.",
+        "correct": false,
+        "explanation": "An aggregate figure can hide poor performance on minority document types; 97% overall is consistent with 99% on invoices and 75% on claim forms. Approving on the aggregate would automate exactly the segments where the model is most likely wrong."
+      },
+      {
+        "letter": "B",
+        "text": "Raise the automation threshold to 0.95 confidence so that only the most certain extractions bypass review.",
+        "correct": false,
+        "explanation": "A higher threshold assumes confidence is well calibrated across all document types, which has not been checked, and calibration often differs most on rare types. The threshold is a tuning knob; the segmentation analysis is the missing prerequisite."
+      },
+      {
+        "letter": "C",
+        "text": "Analyse accuracy separately by document type and by field, and validate calibration on each segment before automating any of them.",
+        "correct": true,
+        "explanation": "Automating on the basis of an aggregate is unsafe when the validation set is dominated by one document type. Breaking accuracy down by type and field reveals whether claim forms or handwritten receipts, or particular fields such as totals, perform far worse than the headline number, and confirms whether high confidence actually means high accuracy in each segment before review is removed there."
+      },
+      {
+        "letter": "D",
+        "text": "Automate invoices only, since they dominate the validation set, and continue full review for the other document types indefinitely.",
+        "correct": false,
+        "explanation": "Restricting automation to invoices is a plausible interim outcome, but choosing it without analysis skips the evidence that would justify it and forgoes automation on other types that may perform well. Segment analysis should drive the decision rather than an assumption about which type is safe."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Context & Reliability",
+    "prompt": "Your human reviewers can check about 500 extractions per day out of 4,000 processed. Today every tenth document is sampled regardless of content, so reviewers spend most of their time confirming easy invoices while errors on ambiguous or contradictory documents reach downstream systems unreviewed. You have a labelled set of 2,000 documents with known ground truth. How should you route review capacity?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Route documents to review based on length and density, since longer and denser documents are where extraction errors are most likely to occur.",
+        "correct": false,
+        "explanation": "Length is a weak and indirect proxy for difficulty; a short receipt with a smudged total is riskier than a long, well-structured invoice. Routing needs a signal tied to the model's actual uncertainty about each field, not a document property."
+      },
+      {
+        "letter": "B",
+        "text": "Review only documents of the types with the highest historical error rates, and skip review entirely for the types that have performed best.",
+        "correct": false,
+        "explanation": "Type-level routing is coarser than needed: within any type, most documents are easy and a few are hard, and skipping a type entirely means novel failures there go undetected. Field-level confidence discriminates within types as well as across them."
+      },
+      {
+        "letter": "C",
+        "text": "Keep uniform sampling but double the sample to every fifth document so more of the problematic cases are caught by chance.",
+        "correct": false,
+        "explanation": "Doubling uniform sampling exceeds the reviewers' capacity and still spends most of it confirming easy documents. Random selection does not concentrate attention where errors are, which is the inefficiency being described."
+      },
+      {
+        "letter": "D",
+        "text": "Have the model emit field-level confidence, calibrate thresholds on the labelled set, and route low-confidence or contradictory cases to review.",
+        "correct": true,
+        "explanation": "Field-level confidence calibrated against labelled ground truth turns limited reviewer capacity into targeted attention: documents where the model is uncertain or where the source is contradictory get reviewed, and easy invoices flow through. The labelled set is what makes the thresholds trustworthy rather than arbitrary."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Context & Reliability",
+    "prompt": "Six months ago you automated all extractions with confidence above 0.9, after validating that segment at 99% accuracy. Since then two new supplier formats have appeared, and a downstream team recently found that one of them causes the model to confidently swap the tax and total fields. Nobody noticed because high-confidence extractions are never reviewed. What ongoing control should you add?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Review a weekly stratified random sample of high-confidence extractions to measure error rate and surface novel failure patterns.",
+        "correct": true,
+        "explanation": "Confidence was calibrated on the documents that existed at the time; new formats can be confidently wrong, and without review of the automated segment nothing detects that. A stratified random sample across document types and suppliers gives an ongoing error-rate measurement and catches novel patterns such as the field swap before they propagate for months."
+      },
+      {
+        "letter": "B",
+        "text": "Lower the automation threshold to 0.8 so that a larger share of extractions is reviewed and the swap is more likely to be caught.",
+        "correct": false,
+        "explanation": "The swapped fields are extracted with high confidence, so moving the threshold changes which uncertain documents are reviewed but does nothing to inspect the confident ones where the new failure lives. Reviewing more low-confidence work does not monitor the automated segment."
+      },
+      {
+        "letter": "C",
+        "text": "Rely on downstream reconciliation failures to flag extraction errors, since they eventually surfaced this problem.",
+        "correct": false,
+        "explanation": "Downstream detection is what allowed the error to run unnoticed for an extended period; it is slow, incomplete, and depends on the error being financially visible. A monitoring control should detect problems before they reach downstream systems, not after."
+      },
+      {
+        "letter": "D",
+        "text": "Run every high-confidence document through a second extraction pass and review only the cases where the two passes disagree.",
+        "correct": false,
+        "explanation": "A confident systematic misreading of a new format will be reproduced by a second pass of the same model, so the two will agree and the swap goes undetected. Self-agreement is not independent verification; sampled human review is."
+      }
+    ]
+  }
+]

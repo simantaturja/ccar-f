@@ -1,0 +1,343 @@
+[
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Context & Reliability",
+    "prompt": "Contracts arrive continuously and your SLA promises each is processed within 36 hours of arrival. You plan to accumulate documents and submit them through the Message Batches API, which processes a batch within 24 hours. What is the longest submission interval that still guarantees the SLA?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Every 24 hours, since the batch processing window matches the interval and gives a predictable daily rhythm.",
+        "correct": false,
+        "explanation": "A document arriving just after a submission waits up to 24 hours for the next batch and then up to 24 hours for processing, a worst case of 48 hours. Predictability of the schedule does not help a contract that misses the promise by half a day."
+      },
+      {
+        "letter": "B",
+        "text": "Every 12 hours, so the worst-case wait before submission plus the 24-hour processing window stays within 36 hours.",
+        "correct": true,
+        "explanation": "The worst case is the full interval waiting for submission plus the full 24-hour processing window. Interval plus 24 must be at most 36, so the interval is at most 12 hours. Shorter intervals also meet the SLA but create more, smaller batches than necessary; longer ones break it."
+      },
+      {
+        "letter": "C",
+        "text": "Every 36 hours, aligning the batch cadence directly with the SLA so each cycle maps to one commitment period.",
+        "correct": false,
+        "explanation": "This ignores processing time entirely: a document arriving right after a submission could wait 36 hours and then need up to 24 more. Aligning the cadence to the SLA number is intuitive but doubles the worst case."
+      },
+      {
+        "letter": "D",
+        "text": "Every 4 hours, which comfortably meets the SLA and keeps each batch small enough to resubmit quickly if some requests fail.",
+        "correct": false,
+        "explanation": "Four-hour batches meet the SLA with room to spare, and small batches do simplify resubmission. But the question asks for the longest interval that still guarantees the promise, and 4 hours triples the number of batches without being required."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Context & Reliability",
+    "prompt": "You move nightly test generation to the Message Batches API for the 50% saving. Each request tells Claude to read the module under test and its existing test file with tools before writing tests. Results come back with a <code>tool_use</code> block and no tests. How should the workload be restructured to stay on the batch API?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Gather the module source and existing test file in the pipeline and include their contents in each batch request, so no tool calls are needed mid-request.",
+        "correct": true,
+        "explanation": "The Batches API does not execute tools or continue a request after a <code>tool_use</code>; each request is a single model turn. Supplying the files up front turns the task into one turn and keeps the discount. The other options either expect unsupported behaviour or give up the saving."
+      },
+      {
+        "letter": "B",
+        "text": "Keep the tool definitions in the batch requests but add a batch-completion step that executes the returned tool calls and submits a follow-up batch with the results.",
+        "correct": false,
+        "explanation": "This is technically possible but each tool round trip becomes another batch with its own up-to-24-hour window, so a request needing two reads could take three days. Multi-turn tool use is what the batch API is not designed for."
+      },
+      {
+        "letter": "C",
+        "text": "Switch test generation back to the synchronous Messages API, where the agentic loop can execute tool calls, and accept the cost.",
+        "correct": false,
+        "explanation": "This works but abandons the goal. Nightly test generation is latency-tolerant, which makes it an ideal batch workload; the only obstacle is the mid-request tool use, and that can be removed by restructuring the request."
+      },
+      {
+        "letter": "D",
+        "text": "Run <code>claude -p</code> from a cron job overnight so Claude Code's own tools handle the reads, avoiding the batch API limitation.",
+        "correct": false,
+        "explanation": "Headless Claude Code can read files, but it uses the synchronous API under the hood, so there is no batch discount. It also swaps a structured batch job for a shell loop that has to manage its own retries and correlation."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Context & Reliability",
+    "prompt": "A batch of 10,000 documents returns 9,650 successes. The 300 failures cite the request exceeding the model's context length; 50 report a transient server error. Each request carried a <code>custom_id</code> equal to the document ID. How should you handle the failures?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Resubmit the full batch of 10,000 so results stay in one place, relying on the 50% discount to keep the cost acceptable and avoiding any merge step.",
+        "correct": false,
+        "explanation": "Re-running 9,650 successful documents doubles the cost of the job and delays the failures by another processing window. The <code>custom_id</code> exists so you can identify and resubmit only what failed."
+      },
+      {
+        "letter": "B",
+        "text": "Retry the 350 failed documents through the synchronous Messages API, unchanged, so they finish within minutes rather than another 24-hour window.",
+        "correct": false,
+        "explanation": "Speed is fine for the 50 transient failures, but the 300 oversized documents will fail identically on the synchronous API because the input still does not fit. Resubmitting unchanged repeats a known failure."
+      },
+      {
+        "letter": "C",
+        "text": "Drop the 350 documents into a manual-review queue, since batch failures indicate documents the model is unlikely to handle well.",
+        "correct": false,
+        "explanation": "A transient error says nothing about the document, and an oversized document is a chunking problem, not a quality signal. Sending 3.5% of volume to humans for a fixable mechanical issue wastes reviewer capacity."
+      },
+      {
+        "letter": "D",
+        "text": "Submit a new batch with only the failed <code>custom_id</code>s: chunk the 300 oversized documents to fit, resubmit the 50 transient failures unchanged.",
+        "correct": true,
+        "explanation": "Failure handling by <code>custom_id</code> lets you target only what failed, and the fix should match the cause: transient errors just need retrying, context-length errors need the document split. This keeps the discount and resolves both failure types on the next batch."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Context & Reliability",
+    "prompt": "Your support agent makes a classification call at the start of every live chat and runs a nightly job that scores 20,000 transcripts for quality. Finance asks you to move both to the Message Batches API for the 50% saving. How should you respond?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Move both, and for live chats poll the batch aggressively; most batches complete well inside the 24-hour window so customers will rarely notice.",
+        "correct": false,
+        "explanation": "The batch API has no latency guarantee; \"usually fast\" is not a property you can build a live conversation on. A customer waiting on classification cannot be told the batch is still processing."
+      },
+      {
+        "letter": "B",
+        "text": "Keep both synchronous: the nightly scoring job feeds a morning dashboard, and any batch delay would leave the dashboard stale.",
+        "correct": false,
+        "explanation": "A nightly job with results due in the morning tolerates hours of latency, which is what the batch window offers. Refusing the saving here forgoes half the cost of your largest workload for a risk that fits within the schedule."
+      },
+      {
+        "letter": "C",
+        "text": "Move the nightly transcript scoring to the batch API; keep the live-chat classification on the synchronous API.",
+        "correct": true,
+        "explanation": "Match the processing mode to the blocking behaviour: a customer is waiting on the classification, so it must be synchronous, while transcript scoring is non-blocking and latency-tolerant and captures the full saving on 20,000 requests. Moving both or neither ignores that difference."
+      },
+      {
+        "letter": "D",
+        "text": "Move both, with live chats submitted to a batch and a fallback to a synchronous call if the batch result has not arrived within 30 seconds.",
+        "correct": false,
+        "explanation": "The fallback will fire on nearly every live chat, so you pay for the batch request and the synchronous call, plus 30 seconds of added latency. The complexity buys nothing because the live workload was never a batch candidate."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Context & Reliability",
+    "prompt": "Two hours into exploring a legacy monolith, the agent's answers degrade: it refers to \"the typical repository pattern\" instead of the <code>LedgerRepository</code> class it read earlier and contradicts a dependency it traced an hour ago. Context is 85% full of raw <code>Grep</code> and <code>Read</code> output. What should the workflow look like?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Keep a scratchpad file of key findings the agent updates and re-reads, and delegate verbose searches to subagents returning summaries.",
+        "correct": true,
+        "explanation": "Degradation comes from specifics being crowded out by raw tool output. A scratchpad persists discovered facts outside the context window, and subagent isolation keeps verbose search results out of the main conversation. Together they sustain coherent exploration well past the point where a single context fills."
+      },
+      {
+        "letter": "B",
+        "text": "Run <code>/compact</code> now and again every 30 minutes, so the raw tool output is summarized before it can crowd out the specifics.",
+        "correct": false,
+        "explanation": "Compaction frees space, but each pass summarizes lossily, and the specifics being lost, class names and traced dependencies, are exactly what summaries blur. Repeated compaction manages the symptom; persisting findings outside the context removes the cause."
+      },
+      {
+        "letter": "C",
+        "text": "Copy every file the agent has identified as important into <code>CLAUDE.md</code> so the knowledge is loaded at the start of every session.",
+        "correct": false,
+        "explanation": "Loading large amounts of code into always-on project context bloats every session, including unrelated ones, and goes stale as the code changes. Findings belong in a working file the agent consults, not in the shared configuration."
+      },
+      {
+        "letter": "D",
+        "text": "Switch to a model with a larger context window so the exploration output fits and the agent can keep everything it has read available.",
+        "correct": false,
+        "explanation": "More room delays the wall but does not remove it, and long inputs still suffer from position effects that bury specifics in the middle. Managing what enters context is a more durable fix than expanding it."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Context & Reliability",
+    "prompt": "A research job runs five subagents in sequence. When the coordinator process crashed after three had finished, restarting re-ran all five from scratch, doubling cost and time. Subagents currently return results only in their tool result to the coordinator. How should the system be designed for crash recovery?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Make every subagent idempotent and re-run all five on restart, accepting the extra cost as the price of a simple and predictable recovery model.",
+        "correct": false,
+        "explanation": "Idempotency is good hygiene but re-running finished work is exactly the cost you are trying to avoid. Simplicity here is paid for on every crash, and long research runs make crashes likely enough to matter."
+      },
+      {
+        "letter": "B",
+        "text": "Resume the coordinator's session with <code>--resume</code> so it continues from its conversation history, which already contains the three completed results.",
+        "correct": false,
+        "explanation": "Session resumption restores the conversation, but the history holds verbose tool results rather than structured state, and it depends on the session having been persisted up to the moment of the crash. It is a coarse recovery for a problem that wants an explicit contract."
+      },
+      {
+        "letter": "C",
+        "text": "Each subagent exports structured state as it finishes; on restart the coordinator loads a manifest and runs only the remaining subagents with it.",
+        "correct": true,
+        "explanation": "Structured state persistence is the crash-recovery pattern: completed work is written somewhere durable, a manifest records what finished, and the coordinator resumes by injecting that state into the remaining agents' prompts. The other approaches either redo the work or lean on conversation history that was never designed as a checkpoint."
+      },
+      {
+        "letter": "D",
+        "text": "Checkpoint the coordinator's full conversation as JSON after every turn and restore it on restart so no messages are lost.",
+        "correct": false,
+        "explanation": "A full transcript checkpoint captures everything, including tens of thousands of tokens of raw results, and restoring it means restarting with a nearly full context. What the remaining subagents need is the findings, not the conversation that produced them."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Context & Reliability",
+    "prompt": "A task has two phases: discover every external API call site across a 120-file service, then design a shared retry wrapper with the team. Discovery produces thousands of lines of matches, and in past attempts the design conversation became incoherent because the context was already nearly full. How should the phases be organized?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Run discovery in the main session, then use <code>/compact</code> before starting the design conversation to free up context space.",
+        "correct": false,
+        "explanation": "Compaction recovers space but summarizes lossily, so specific call sites and edge cases found in discovery may blur before the design phase needs them. It repairs a full context after the fact rather than keeping the noise out."
+      },
+      {
+        "letter": "B",
+        "text": "Use <code>/clear</code> between phases and re-describe the discovery results by hand when starting the design conversation.",
+        "correct": false,
+        "explanation": "Clearing gives a clean slate but throws away the discovery output entirely, leaving you to reconstruct it manually and probably incompletely. The findings should carry forward in a compact form without human transcription."
+      },
+      {
+        "letter": "C",
+        "text": "Write all discovery output to a file and reference it with <code>@</code> at the start of the design phase so nothing is lost.",
+        "correct": false,
+        "explanation": "Persisting to a file is a good instinct, but pulling thousands of raw lines back in with <code>@</code> refills the context with the same noise. The file should hold a distilled summary, not the raw matches."
+      },
+      {
+        "letter": "D",
+        "text": "Delegate discovery to a subagent that returns a concise summary of call sites and patterns; inject that into the design phase.",
+        "correct": true,
+        "explanation": "Subagent isolation keeps verbose discovery output out of the main context entirely, and summarizing findings before the next phase gives the design conversation what it needs at a fraction of the tokens. This prevents the exhaustion rather than recovering from it."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Context & Reliability",
+    "prompt": "Yesterday you spent a session with Claude Code tracing how the billing module handles proration and reached a plan for a fix. Overnight, teammates merged changes to three files in that module. Today you want to implement the fix without repeating the whole investigation. How should you resume?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Resume the session and tell Claude which three files changed, asking it to re-read those before continuing.",
+        "correct": true,
+        "explanation": "Most of yesterday's analysis is still valid, so resumption preserves it, and naming the changed files lets Claude perform targeted re-analysis instead of a full re-exploration. This restores accurate state at minimal cost; the alternatives either trust stale results or redo everything."
+      },
+      {
+        "letter": "B",
+        "text": "Resume the session and continue implementing the plan, since Claude will re-read any file it needs when it edits it.",
+        "correct": false,
+        "explanation": "Claude may edit based on yesterday's understanding of a file that has since changed, and it has no way to know which of its cached conclusions are stale. Resumption without flagging changes risks acting on outdated analysis."
+      },
+      {
+        "letter": "C",
+        "text": "Start a new session and repeat the proration investigation so the analysis reflects the current code exactly.",
+        "correct": false,
+        "explanation": "A full re-investigation is the safe extreme, but three changed files out of a whole module do not justify discarding a day of valid context. Targeted re-analysis gets you current state far more cheaply."
+      },
+      {
+        "letter": "D",
+        "text": "Fork the session so the original analysis is preserved, and in the fork ask Claude to re-explore the module from scratch.",
+        "correct": false,
+        "explanation": "Forking is for exploring divergent approaches from a shared baseline, not for refreshing stale state. Re-exploring from scratch inside a fork combines the cost of a new investigation with none of the benefit of the preserved context."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Context & Reliability",
+    "prompt": "Three weeks ago a session mapped the payment service and produced a migration plan. Since then a refactor touched about 60% of its files and renamed several modules. You want to continue the migration today. Which approach restores useful state most reliably?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Resume the old session and list the changed files so Claude re-reads them before continuing with the plan.",
+        "correct": false,
+        "explanation": "Targeted re-analysis works when a few files changed. With 60% changed and modules renamed, the stale tool results dominate the context and the list of changed files is most of the codebase, so resumption carries more misinformation than value."
+      },
+      {
+        "letter": "B",
+        "text": "Resume the old session and run <code>/compact</code> so stale tool output is summarized away and Claude works from a condensed history.",
+        "correct": false,
+        "explanation": "Compaction condenses the stale results but does not correct them; a summary of wrong file contents is still wrong. It also blurs the specific decisions you actually want to preserve."
+      },
+      {
+        "letter": "C",
+        "text": "Start a new session seeded with a structured summary of earlier findings and decisions, noting the code has since been refactored.",
+        "correct": true,
+        "explanation": "When prior tool results are mostly stale, a fresh session seeded with a structured summary of decisions and key facts is more reliable than resuming: Claude re-reads current code while keeping the reasoning that still applies. Resumption in any form carries three weeks of outdated file contents."
+      },
+      {
+        "letter": "D",
+        "text": "Fork the old session so the original plan is preserved and continue the migration in the fork against the current code.",
+        "correct": false,
+        "explanation": "A fork inherits the same stale context as the parent; it protects the original but does not refresh anything. Forking is for branching alternatives from a valid baseline, and this baseline is no longer valid."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Context & Reliability",
+    "prompt": "After an hour analyzing the checkout module with Claude Code, you want to compare two refactoring strategies, extracting a service versus introducing a strategy pattern, each explored independently from the same analysis, without either exploration contaminating the other. How should you set this up?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Continue in the same session: explore the service extraction first, then ask Claude to set it aside and explore the strategy pattern.",
+        "correct": false,
+        "explanation": "The second exploration happens with the first still in context, so its conclusions are anchored by what came before. That is the contamination you wanted to avoid, and it also fills the context with both explorations."
+      },
+      {
+        "letter": "B",
+        "text": "Open two new sessions and have each re-analyze the checkout module before exploring its assigned strategy.",
+        "correct": false,
+        "explanation": "This achieves independence but pays for the hour of analysis twice and risks the two sessions reaching slightly different baselines, which makes the comparison less clean than one shared starting point."
+      },
+      {
+        "letter": "C",
+        "text": "Spawn two subagents with the <code>Task</code> tool, giving each a pasted summary of the analysis and one strategy to explore.",
+        "correct": false,
+        "explanation": "Subagents are independent, but they start from whatever summary you write rather than the full analysis, so nuance is lost and the summaries may differ. Forking preserves the exact baseline without transcription."
+      },
+      {
+        "letter": "D",
+        "text": "Fork the session twice from the current point and explore one strategy in each fork, then compare the outcomes.",
+        "correct": true,
+        "explanation": "Forking creates independent branches from a shared analysis baseline, which is exactly the requirement: each fork has the full hour of context, neither sees the other's exploration, and the comparison starts from identical state. The alternatives either share context or rebuild it."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Context & Reliability",
+    "prompt": "You ask the agent to find every caller of <code>calculateTax</code>. The function is re-exported through two wrapper modules under different names, and one wrapper aliases it again. The agent's first attempt was to <code>Read</code> all 300 source files, exhausting context before it finished. How should the search be structured?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "<code>Grep</code> for the definition and every export or alias, then <code>Grep</code> each name across the codebase and <code>Read</code> only matching files.",
+        "correct": true,
+        "explanation": "Content search finds the export chain cheaply, each discovered name becomes a new search, and reading is limited to files that actually reference one of the names. This builds understanding incrementally within context limits, which reading everything up front cannot do."
+      },
+      {
+        "letter": "B",
+        "text": "Use <code>Glob</code> for files whose names contain <code>tax</code> and <code>Read</code> those, since callers of tax logic are likely to live in tax-related files.",
+        "correct": false,
+        "explanation": "Glob matches file paths, not contents, and callers of a tax function are scattered across checkout, invoicing, and reporting code whose filenames say nothing about tax. This finds the definition's neighbourhood and misses the callers."
+      },
+      {
+        "letter": "C",
+        "text": "Start from the module that defines <code>calculateTax</code>, <code>Read</code> it, and follow its imports outward file by file until all callers are found.",
+        "correct": false,
+        "explanation": "Following imports goes the wrong direction: imports point to what a file depends on, not who depends on it. Finding callers requires searching for references, which is what content search does in one pass."
+      },
+      {
+        "letter": "D",
+        "text": "<code>Read</code> the two wrapper modules first to learn the alias names, then <code>Read</code> every file that imports either wrapper to check for calls.",
+        "correct": false,
+        "explanation": "Learning the aliases from the wrappers is a sound first step, but reading every importer of the wrappers still pulls in files that use other exports and never call this function. Searching for the specific names keeps the read set small."
+      }
+    ]
+  }
+]

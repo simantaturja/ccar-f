@@ -1,0 +1,11 @@
+{
+  "name": "ccar-f-exam-portal",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Static exam portal for CCAF (Claude Certified Architect – Foundations) mock exams",
+  "scripts": {
+    "start": "python3 -m http.server 4321 -d docs",
+    "extract": "python3 scripts/extract.py",
+    "test": "node --test tests/"
+  }
+}

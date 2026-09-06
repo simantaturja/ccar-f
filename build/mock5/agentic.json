@@ -1,0 +1,405 @@
+[
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "Across 2,000 sessions, 3% end with neither a completed refund/answer nor an <code>escalate_to_human</code> call. Most are iteration-cap or <code>max_tokens</code> exits, but a quarter are clean <code>end_turn</code> responses such as \"I'm unable to help further with this.\" You own the orchestration layer. Which design guarantees every session ends in resolution or escalation?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "From code, call <code>escalate_to_human</code> on any exit other than <code>end_turn</code>; treat <code>end_turn</code> as the model's signal that the case is resolved.",
+        "correct": false,
+        "explanation": "This closes the cap and truncation exits but leaves the quarter that end cleanly with an apology. <code>end_turn</code> means the model stopped talking, not that the case was resolved; a guarantee cannot rest on it."
+      },
+      {
+        "letter": "B",
+        "text": "On cap or <code>max_tokens</code> exits, send a user turn asking the model to finish or escalate, up to twice, then escalate from code; treat <code>end_turn</code> as resolved.",
+        "correct": false,
+        "explanation": "Recovery turns are a reasonable tactic for truncation, but the design still equates <code>end_turn</code> with resolution, so the apologetic dead ends remain unhandled. The retries also spend budget in the very sessions closest to the cap."
+      },
+      {
+        "letter": "C",
+        "text": "Require the model to finish via a <code>resolve_case</code> tool or <code>escalate_to_human</code>; escalate from code on any exit that used neither.",
+        "correct": true,
+        "explanation": "Making resolution an explicit tool call turns \"resolved\" into a machine-checkable event, and the code fallback covers every other exit path: cap, truncation, exceptions, and polite dead ends. Treating <code>end_turn</code> as success or parsing the final text cannot give the same guarantee."
+      },
+      {
+        "letter": "D",
+        "text": "Add a Stop hook that inspects the final assistant message for resolution language and, if none is found, calls <code>escalate_to_human</code> from the hook.",
+        "correct": false,
+        "explanation": "A hook runs deterministically, but the decision inside it is a natural-language heuristic: phrasing varies, apologies can read like resolutions, and localisation breaks the check. The signal should be structural, not textual."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Agentic Architecture",
+    "prompt": "When a subagent process crashes or the coordinator exceeds its 20-minute budget, research jobs stay in a <code>running</code> state indefinitely and the requesting user never receives anything. In the last month 4% of jobs ended this way. Partial findings from completed subagents were available in every case. What should the orchestration layer do?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "A finalizer that, on timeout or crash, re-runs the coordinator once with double the budget and emits a failure notice only if the second run also fails.",
+        "correct": false,
+        "explanation": "This defines a terminal state, but doubles the wall-clock of the worst jobs and discards the partial findings already in hand; the requester waits up to an hour to learn nothing was produced. Recovery should start from what exists, not from zero."
+      },
+      {
+        "letter": "B",
+        "text": "Emit heartbeat events from each agent to a dashboard and page an operator when a job has produced no events for five minutes so a human can intervene.",
+        "correct": false,
+        "explanation": "Observability helps operators notice stuck jobs but turns every failure into a manual chore and still leaves the requester waiting. It is useful alongside a finalizer, not instead of one; the requirement is that the system itself closes every job."
+      },
+      {
+        "letter": "C",
+        "text": "A finalizer that, on timeout or crash, returns the raw outputs of every completed subagent concatenated, so no findings are lost.",
+        "correct": false,
+        "explanation": "Nothing is lost, but nothing is usable either: the requester receives unsynthesized search dumps with no indication of what was not covered. A defined end state should still be a report, even a partial one, with its gaps marked."
+      },
+      {
+        "letter": "D",
+        "text": "A finalizer that, on timeout or crash, synthesizes the completed subagents' findings into a partial report with uncovered areas marked and delivers it with an explicit failure status.",
+        "correct": true,
+        "explanation": "Every job then ends in a defined terminal state the requester can see: a report built from what was actually found, honest about what was not, and flagged as incomplete. The other options either restart from zero, wait for a human, dump raw output, or leave the requester in silence."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "Human agents receiving escalations cannot see the chat transcript. Today <code>escalate_to_human</code> is called with the reason, the customer ID, and the conversation ID. Agents report spending 6 to 8 minutes re-verifying identity, asking for the order number, and rediscovering what the bot already tried. Which payload design best fixes this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add the customer's issue in one sentence and a recommended action, keeping the payload short enough to read at a glance.",
+        "correct": false,
+        "explanation": "Shorter is easier to read, but the two things costing the most time, whether identity was verified and which actions already ran, are still missing. The human keeps re-verifying and re-trying because the payload does not say they can skip it."
+      },
+      {
+        "letter": "B",
+        "text": "Add a sentiment score, a priority tier, and the customer's lifetime value so the escalation is routed to the right queue faster.",
+        "correct": false,
+        "explanation": "Routing metadata helps the queue, not the agent who picks the case up. None of these fields removes a minute from re-verification or rediscovery, which is where the 6 to 8 minutes go."
+      },
+      {
+        "letter": "C",
+        "text": "Append the full message history and every raw tool result to the current payload so the human has all the evidence the bot had.",
+        "correct": false,
+        "explanation": "The evidence is there, but unsynthesized: the agent reads through 40-field order payloads to find out what was tried. Completeness at this volume adds reading time rather than removing rediscovery."
+      },
+      {
+        "letter": "D",
+        "text": "Add verification method and time, order IDs and amounts, actions attempted with outcomes, root cause, and a recommended next action.",
+        "correct": true,
+        "explanation": "Each field removes a step the human is currently repeating: verification state stops re-verification, order facts stop the order-number question, attempted actions stop retries. Structured, complete, and short enough to act on immediately."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "After <code>get_customer</code> verifies identity, the coordinator hands refund cases to a refund subagent. A PreToolUse gate blocks <code>process_refund</code> unless a verified customer ID is present in the session. The subagent, starting with an empty context, either re-runs <code>get_customer</code> and asks the customer for details again, or hits the gate and fails. How should the handoff be designed?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Put the verified customer ID, verification method and time, and relevant order facts in the subagent's prompt; have the gate accept that record.",
+        "correct": true,
+        "explanation": "Subagents do not inherit context, so authorization state must travel explicitly in the handoff. Passing the verification record lets the gate keep enforcing the rule while the subagent skips redundant work. It preserves both the guarantee and first-contact efficiency."
+      },
+      {
+        "letter": "B",
+        "text": "Pass only the customer ID in the subagent's prompt and relax the gate to accept any customer ID that appears there.",
+        "correct": false,
+        "explanation": "Passing the ID alone removes the re-verification turn, but relaxing the gate to accept any ID in the prompt means an ID the customer typed, or one the coordinator guessed, satisfies it. The gate no longer proves verification happened."
+      },
+      {
+        "letter": "C",
+        "text": "Forward the coordinator's full conversation to the subagent and have the gate search that history for a successful <code>get_customer</code> result.",
+        "correct": false,
+        "explanation": "The proof is in the history, but locating it means the gate parses a long transcript with tool payloads, which is fragile and expensive, and the subagent's context fills with material irrelevant to the refund. Authorization state should be explicit."
+      },
+      {
+        "letter": "D",
+        "text": "Have the coordinator issue a signed session token and have the subagent call <code>get_customer</code> with the token to re-verify silently before acting.",
+        "correct": false,
+        "explanation": "Silent re-verification avoids asking the customer again, but it still costs a tool turn per handoff and requires the backend to support token-based lookups. The coordinator already holds the verified state; passing it is cheaper than re-deriving it."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Agentic Architecture",
+    "prompt": "An agent tasked with adding tests to a 900-file legacy service follows a fixed sequence: list files with <code>Glob</code>, then generate one test file per source file in alphabetical order. It exhausts its budget after 110 files, having tested string helpers and constants while the payment and ledger modules remain untested. How should the task be decomposed?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Rank source files by git churn multiplied by size, then generate tests down the ranked list until the budget is spent.",
+        "correct": false,
+        "explanation": "Ranking is better than alphabetical order, but the list is fixed once computed. Churn and size are proxies that miss a stable, rarely edited ledger module, and the agent never revises the plan when it discovers that one module underpins many others."
+      },
+      {
+        "letter": "B",
+        "text": "Map structure and entry points first, identify high-impact untested areas, then follow a prioritized plan revised as dependencies emerge.",
+        "correct": true,
+        "explanation": "Open-ended work like this benefits from dynamic decomposition: investigate, prioritize, and let intermediate findings reshape the subtasks. Payment and ledger surface early because the plan is driven by discovered risk, not file order. A fixed sequence can never react to what it learns."
+      },
+      {
+        "letter": "C",
+        "text": "Ask the team for the twenty most critical modules and have the agent generate tests only for those, in the order given.",
+        "correct": false,
+        "explanation": "Human input on criticality is valuable and worth feeding into the plan, but a fixed list of twenty ignores dependencies the agent would discover, and the team's view of criticality is often stale. It also removes the agent's ability to adapt."
+      },
+      {
+        "letter": "D",
+        "text": "Start from the payment module and follow its imports outward, generating tests for each dependency reached before moving further.",
+        "correct": false,
+        "explanation": "Seeding from a known critical module is adaptive, but the traversal is driven by import edges rather than risk, so trivial utilities imported by payment get tested before the ledger module that payment never imports directly."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Agentic Architecture",
+    "prompt": "For the topic \"AI regulation across the EU, US, and China\", the coordinator creates three regional subtasks up front and dispatches them. The EU subagent's findings show that a new multilateral treaty now dominates the topic, but the plan never changes and the treaty gets one sentence in the report. How should the coordinator handle discoveries like this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add a final gap-check pass in which the synthesis agent lists topics that appear under-covered so the report is transparent about its limits.",
+        "correct": false,
+        "explanation": "Reporting gaps is honest and worth doing, but it documents the problem instead of fixing it. The treaty was discoverable mid-run; the system should have researched it, not just admitted afterward that it did not."
+      },
+      {
+        "letter": "B",
+        "text": "Once all three regional subagents return, have the coordinator review the synthesis draft for gaps and run one round of follow-up subtasks for anything missing.",
+        "correct": false,
+        "explanation": "A single re-planning round after synthesis catches some omissions, but a discovery made early waits until the end to be acted on, and a treaty mentioned briefly in the draft may not register as a gap at all. Adaptation should follow findings as they arrive."
+      },
+      {
+        "letter": "C",
+        "text": "After each subagent returns, have the coordinator evaluate the findings for new subtopics and spawn targeted subtasks, within a bounded iteration budget.",
+        "correct": true,
+        "explanation": "Dynamic decomposition lets intermediate findings reshape the plan, which is exactly what the treaty discovery required. A bounded budget keeps the loop from expanding indefinitely. This adapts to the unknown rather than trying to enumerate it in advance."
+      },
+      {
+        "letter": "D",
+        "text": "Let the synthesis agent request additional searches directly from the search subagent when it notices a topic that lacks depth.",
+        "correct": false,
+        "explanation": "This reacts to gaps, but bypasses the coordinator, so scope decisions and duplication control move to an agent with no view of the overall plan. Deeper investigation is a coordinator decision; scoped fact checks are what direct access suits."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "Some responses end with <code>stop_reason</code> <code>max_tokens</code> while the model is midway through writing the <code>process_refund</code> <code>tool_use</code> input, so the JSON is incomplete. Your loop currently treats any non-<code>tool_use</code> stop reason as final and sends the partial text to the customer, who then sees a half sentence and no refund. How should the loop handle this stop reason?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Treat <code>max_tokens</code> as its own case: discard the incomplete <code>tool_use</code> and re-request with a higher <code>max_tokens</code> or a request to be concise.",
+        "correct": true,
+        "explanation": "<code>max_tokens</code> is a distinct signal meaning the response was cut, not finished. The loop must recognize it, refuse to act on truncated tool input, and recover by requesting again. Treating it as <code>end_turn</code> is the bug; a global setting or partial execution would only mask it."
+      },
+      {
+        "letter": "B",
+        "text": "Resend the truncated response as the assistant turn followed by a user message saying \"continue\", so the model completes the unfinished JSON.",
+        "correct": false,
+        "explanation": "Continuation works for prose, but an assistant turn containing an incomplete <code>tool_use</code> block is not a valid message to send back, and the model cannot splice the rest of a JSON object onto it. Truncated tool calls must be regenerated, not resumed."
+      },
+      {
+        "letter": "C",
+        "text": "Execute whichever <code>tool_use</code> blocks parsed successfully and drop the truncated one, then return results so the model can retry the missing call.",
+        "correct": false,
+        "explanation": "Executing parsed blocks looks efficient, but a truncated response is an incomplete plan: earlier blocks may depend on the missing one, and a partial refund call is exactly what you do not want to run. Nothing from a cut response should be trusted as complete."
+      },
+      {
+        "letter": "D",
+        "text": "Retry once with double the <code>max_tokens</code>; if the retry is also truncated, fall back to presenting the text portion as the final answer.",
+        "correct": false,
+        "explanation": "The first step is right, but the fallback reinstates the original bug for the hardest cases, which are exactly the ones that hit the limit twice. A truncated response should never be presented as final; escalate or retry again instead."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Agentic Architecture",
+    "prompt": "The coordinator emits three <code>Task</code> <code>tool_use</code> blocks in one response to run the search, document, and synthesis subagents in parallel. Your loop executes only the first block and sends back a single <code>tool_result</code>; the next API call fails with an error about <code>tool_use</code> ids that have no matching <code>tool_result</code>. What should change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Execute the blocks one at a time, calling the API after each with the results gathered so far, so the model can react to early results.",
+        "correct": false,
+        "explanation": "Every <code>tool_use</code> in the assistant turn needs a <code>tool_result</code> in the next user message, so calling the API after only one result triggers the same error. Reacting to early results requires the model to have asked for them in separate turns."
+      },
+      {
+        "letter": "B",
+        "text": "Instruct the coordinator to emit one <code>Task</code> call per turn so each tool result is returned before the next subagent is spawned.",
+        "correct": false,
+        "explanation": "Serializing the calls avoids the error but discards the parallelism that multiple <code>Task</code> calls in one response are designed to provide, roughly tripling latency. It also relies on the model following a prompt to compensate for a loop defect."
+      },
+      {
+        "letter": "C",
+        "text": "Execute all three, then return a single <code>tool_result</code> under the first block's id whose content aggregates the three subagents' outputs.",
+        "correct": false,
+        "explanation": "All the work is done, but two ids still have no matching result, so the API rejects the request exactly as before. Results must be returned per id; aggregation, if wanted, can happen in the model's next turn."
+      },
+      {
+        "letter": "D",
+        "text": "Execute every <code>tool_use</code> block in the response and return one user message containing a <code>tool_result</code> for each id.",
+        "correct": true,
+        "explanation": "The API requires a result for every tool call in the prior assistant turn, and multiple blocks in one response are the mechanism for parallel work. Executing all of them and returning all results in one message fixes the error and keeps the intended concurrency."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "A customer's first message reads: \"I was charged twice for order 88213. I want to speak to a person, not a bot.\" <code>lookup_order</code> confirms the duplicate charge and <code>process_refund</code> could fix it in one call. Your first-contact resolution target is 80%. What should the agent do?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Call <code>escalate_to_human</code> now, including the confirmed duplicate charge and a recommended refund so the human can resolve it immediately.",
+        "correct": true,
+        "explanation": "An explicit request for a human is an escalation trigger that should be honored without first attempting resolution. Doing the lookup and packaging a recommendation is fine and makes the human faster, but the decision to escalate is not the agent's to negotiate. Resolution metrics do not override a stated preference."
+      },
+      {
+        "letter": "B",
+        "text": "Call <code>escalate_to_human</code> now with the customer's message and the reason, skipping lookups so the human owns the investigation from the start.",
+        "correct": false,
+        "explanation": "Honoring the request immediately is right; stripping the handoff is not. The lookup already confirmed the duplicate charge, and a human without that finding repeats it. Escalate now, but hand over what is known and a recommended action."
+      },
+      {
+        "letter": "C",
+        "text": "Process the refund first since the case is unambiguous, then escalate with the resolution noted so the human only needs to confirm.",
+        "correct": false,
+        "explanation": "Acting on the account after the customer has said they want a human takes an action they did not consent to from the bot. Even a correct refund can feel like being overridden. The autonomous action should wait for the human the customer requested."
+      },
+      {
+        "letter": "D",
+        "text": "Ask the customer why they prefer a human and what outcome they want, so the escalation can be routed to the right team with better context.",
+        "correct": false,
+        "explanation": "Clarifying questions are appropriate for ambiguous requests such as multiple account matches. A demand for a human is not ambiguous; interrogating it adds a turn, delays the handoff, and is the kind of exchange that makes customers repeat themselves in capitals."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "A customer writes: \"This is the third time I've had to explain this. Ridiculous.\" The issue is a return of an unopened item within the 30-day window, fully covered by policy and resolvable with the tools available. The customer has not asked for a human. What should the agent do?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Call <code>escalate_to_human</code> right away, since strong negative sentiment indicates a relationship at risk that a person should handle.",
+        "correct": false,
+        "explanation": "Sentiment is an unreliable proxy for case complexity, and escalating a routine return adds a queue wait to an already annoyed customer. It also erodes first-contact resolution for cases the agent handles well. Frustration is a reason to act quickly, not to hand off."
+      },
+      {
+        "letter": "B",
+        "text": "Skip pleasantries and process the return immediately, since the fastest resolution is the best answer to a customer who is tired of explaining.",
+        "correct": false,
+        "explanation": "Speed matters, but ignoring the customer's stated frustration makes the interaction feel mechanical and is a documented driver of lower satisfaction on otherwise correct resolutions. A one-line acknowledgment costs nothing and changes how the fix lands."
+      },
+      {
+        "letter": "C",
+        "text": "Acknowledge the frustration briefly, resolve the return now, and escalate only if the customer asks for a person.",
+        "correct": true,
+        "explanation": "When the issue is within capability and the customer has not requested a human, the right pattern is empathy plus resolution. Escalation stays available if they ask. This protects both the customer experience and the resolution target, unlike sentiment-triggered handoff or silent processing."
+      },
+      {
+        "letter": "D",
+        "text": "Offer a choice up front: ask whether they would like the agent to process the return now or be connected to a human agent.",
+        "correct": false,
+        "explanation": "Offering a menu seems respectful but pushes a decision onto someone who wants the problem gone, and it nudges toward escalation of a case that needs none. Resolve first; the customer can still ask for a human at any point."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Agentic Architecture",
+    "prompt": "Two reviewers can check about 500 of the 5,000 invoices extracted daily. Today a random 10% goes to review. Error analysis shows mistakes cluster in handwritten invoices, multi-currency documents, and the <code>tax_amount</code> field, while typed single-currency invoices are almost always correct. How should extractions be routed to review?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Route any extraction with a field confidence below 0.7 to review, filling the rest of the capacity with random documents.",
+        "correct": false,
+        "explanation": "A single uncalibrated cutoff ignores what the error analysis already found: handwriting and multi-currency layouts predict errors even when confidence is moderate. Random fill also spends capacity on documents known to be reliable."
+      },
+      {
+        "letter": "B",
+        "text": "Route on calibrated low field confidence plus traits such as handwriting or multiple currencies, with a small stratified sample of the rest.",
+        "correct": true,
+        "explanation": "Confidence scores, document characteristics, and field-level ambiguity are the signals that predict errors here, so routing on them concentrates limited reviewers where mistakes live. A small stratified sample of high-confidence output keeps measuring error rates and catches new patterns. Random sampling cannot do either."
+      },
+      {
+        "letter": "C",
+        "text": "Route only extractions whose calibrated field confidence falls below the threshold; since confidence is calibrated, sampling the rest is unnecessary.",
+        "correct": false,
+        "explanation": "Calibrated confidence is the strongest single signal, but calibration drifts as suppliers and layouts change, and confidence cannot flag error patterns it has never seen. Dropping the sample removes your only way to notice that."
+      },
+      {
+        "letter": "D",
+        "text": "Route every handwritten or multi-currency invoice, then fill remaining capacity with the lowest-confidence <code>tax_amount</code> values.",
+        "correct": false,
+        "explanation": "Document traits and the known bad field cover the current error clusters, but the rule is frozen on today's analysis: other fields and future patterns get no attention, and there is no measurement of what is auto-accepted."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Agentic Architecture",
+    "prompt": "Your extraction pipeline reports 97% field accuracy overall on a labeled set. Leadership wants to stop human review for extractions where the model's field-level confidence exceeds 0.9, which would cover 80% of volume. What should you do before making that change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Check the overall calibration of confidence on the labeled set, and if scores above 0.9 are at least 97% accurate, automate above that threshold.",
+        "correct": false,
+        "explanation": "Overall calibration is a necessary check but hides the same problem as overall accuracy: a well-calibrated aggregate can contain a document type where 0.9 means 85%. Calibration has to hold in each segment you intend to automate."
+      },
+      {
+        "letter": "B",
+        "text": "Add an independent second model pass as an automated reviewer for high-confidence extractions so humans can be removed without losing a check.",
+        "correct": false,
+        "explanation": "A second pass can catch some errors but tends to share blind spots with the first on the same document types, and it adds cost to the very extractions you believe are fine. It also skips the question of whether the 97% hides weak segments."
+      },
+      {
+        "letter": "C",
+        "text": "Reduce review to a 2% random sample of high-confidence output and watch the sampled error rate for a month before deciding on full automation.",
+        "correct": false,
+        "explanation": "Ongoing stratified sampling is the right mechanism after automation is justified, but jumping to it first means a month of unreviewed errors if a document type or field is much worse than average. Segment analysis should come before the reduction."
+      },
+      {
+        "letter": "D",
+        "text": "Break accuracy down by document type and field on the labeled set, and check that confidence above 0.9 is accurate in each segment.",
+        "correct": true,
+        "explanation": "Aggregate accuracy can mask segments that perform far worse, and a threshold is only safe if confidence is calibrated within each segment. Checking by document type and field on labeled data is the prerequisite; the other options change the process before knowing whether it is safe."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Agentic Architecture",
+    "prompt": "Your extraction pipeline processes a high volume of documents, and human reviewers have capacity to check about 5% of them. Downstream systems act on the extracted data, and some of it drives financial or compliance decisions. Which extractions should be routed to human review?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Any document containing financial or compliance-critical fields, regardless of confidence, with remaining capacity going to the lowest-confidence rest.",
+        "correct": false,
+        "explanation": "Routing on field criticality feels safe but spends most of the 5% on critical documents the model extracts correctly and confidently, leaving little for the extractions actually likely to be wrong. Criticality is better handled by downstream approval controls on the action taken; review routing should follow the error signal, not the field's importance."
+      },
+      {
+        "letter": "B",
+        "text": "A stratified random 5% across document types, so error rates are measured evenly and no category is systematically unreviewed.",
+        "correct": false,
+        "explanation": "Stratified sampling is the right tool for measuring error rates in high-confidence output and catching new failure patterns, and a small slice of capacity should go to it. Spending the entire budget on measurement ignores the calibrated signals that already point at which extractions are wrong."
+      },
+      {
+        "letter": "C",
+        "text": "Low field-level confidence, ambiguous or internally contradictory sources, and fields the model marked absent, plus a small sample of the rest.",
+        "correct": true,
+        "explanation": "Limited reviewer capacity should follow the predictors of error: calibrated low confidence, contradictory or ambiguous sources, and fields the model could not find. That concentrates humans where they change outcomes and keeps the routine 95% flowing. A small stratified sample of confident output preserves ongoing error measurement. Value-based routing and pure sampling both ignore the error signal you already have."
+      },
+      {
+        "letter": "D",
+        "text": "Documents whose type or source has few prior examples, since accuracy on rare and new formats is unmeasured and most likely to hide errors.",
+        "correct": false,
+        "explanation": "Novel formats deserve attention and confidence is often lower on them, which the confidence route already captures. Routing purely on rarity reviews many correct extractions of unusual but simple documents while a common document type with a contradictory value sails through unreviewed."
+      }
+    ]
+  }
+]

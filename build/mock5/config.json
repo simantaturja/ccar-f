@@ -1,0 +1,405 @@
+[
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Claude Code Config",
+    "prompt": "The team wants a <code>/release-notes</code> command that every developer gets automatically after pulling the repo. One developer also wants a <code>/standup</code> command that drafts their personal daily update, which nobody else should see or maintain. Where should the two command files live?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Both in <code>.claude/commands/</code> in the repository, so everything is version-controlled and teammates can skip the command they do not use.",
+        "correct": false,
+        "explanation": "Committing a personal command puts one person's workflow into the shared namespace, shows up in everyone's command list, and invites edits from teammates. Version control is the right reason to place the team command there, not the personal one."
+      },
+      {
+        "letter": "B",
+        "text": "<code>/release-notes</code> in <code>.claude/commands/</code> in the repository and <code>/standup</code> in <code>~/.claude/commands/</code> on that developer's machine.",
+        "correct": true,
+        "explanation": "Project-scoped commands are shared through the repo and appear for anyone who clones or pulls; user-scoped commands in the home directory are personal and available across that user's projects. Matching scope to audience is the whole decision here."
+      },
+      {
+        "letter": "C",
+        "text": "Both in <code>~/.claude/commands/</code>, with a small setup script in the repo that copies <code>/release-notes</code> into each developer's home directory.",
+        "correct": false,
+        "explanation": "A copy step reintroduces drift: the release-notes command changes and half the team has the old version. Project scope already distributes the file with the code, so the script solves a problem Claude Code has already solved."
+      },
+      {
+        "letter": "D",
+        "text": "<code>/release-notes</code> in <code>.claude/commands/</code>; <code>/standup</code> also in <code>.claude/commands/</code> but listed in <code>.gitignore</code> so it stays local.",
+        "correct": false,
+        "explanation": "This works on one machine, but the personal command now depends on a gitignore rule, disappears on a fresh clone, and is unavailable in that developer's other projects. User scope exists for exactly this file."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Claude Code Config",
+    "prompt": "Your <code>/db-reset</code> skill in <code>.claude/skills/db-reset/SKILL.md</code> should only rewrite seed SQL files. Twice it has run <code>Bash</code> to drop and recreate a local database directly, once against a shared dev instance. You want the skill to be able to read and write files but never run shell commands, without restricting Bash elsewhere. What should you change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Set <code>allowed-tools: Bash(psql:*)</code> in the SKILL.md frontmatter so the skill can only run SQL commands through the shell.",
+        "correct": false,
+        "explanation": "Narrowing Bash to <code>psql</code> is enforced, but <code>psql</code> can drop and recreate a database, which is the incident you are preventing. The requirement is no shell at all for this skill; file tools are sufficient for rewriting seeds."
+      },
+      {
+        "letter": "B",
+        "text": "Add a <code>permissions.deny</code> entry for <code>Bash</code> in <code>.claude/settings.json</code> so shell access is blocked project-wide.",
+        "correct": false,
+        "explanation": "A project-wide deny is deterministic but far too broad: it blocks running tests, git, and build commands in every other workflow. The requirement is to constrain one skill, and that constraint belongs on the skill."
+      },
+      {
+        "letter": "C",
+        "text": "State clearly in the SKILL.md body that the skill must not execute shell commands and must only edit files under <code>db/seeds/</code>.",
+        "correct": false,
+        "explanation": "Instructions in the skill body are guidance the model usually follows, but the incidents show it did not. A shared database was touched, so this needs enforcement rather than a stronger sentence."
+      },
+      {
+        "letter": "D",
+        "text": "Set <code>allowed-tools: Read, Write, Edit</code> in the SKILL.md frontmatter so <code>Bash</code> is unavailable while the skill runs.",
+        "correct": true,
+        "explanation": "The <code>allowed-tools</code> frontmatter restricts which tools are available during that skill's execution and nothing else, which is exactly the scope needed. It is enforced by Claude Code rather than by model compliance, and it leaves Bash available in every other context."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Claude Code Config",
+    "prompt": "You must replace the authentication middleware across six services. You already know how you would do it, but the security team requires sign-off on the approach before any code changes, and their review takes two days. Which way of working with Claude Code fits this constraint?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Use direct execution on a feature branch and open a pull request, giving the security team working code as the artifact to review.",
+        "correct": false,
+        "explanation": "A PR is a fine review artifact for implementation, but the requirement is approval of the approach before implementation. If the reviewers ask for a different design, six services of work get redone. Reviewing code is not the same as reviewing the plan."
+      },
+      {
+        "letter": "B",
+        "text": "Run an Explore subagent to map the current middleware usage, then execute directly using its summary as the design justification for reviewers.",
+        "correct": false,
+        "explanation": "An Explore pass is useful for discovery, but its output is a description of the current state, not a proposed approach the security team can approve. Executing immediately still puts implementation ahead of the required sign-off."
+      },
+      {
+        "letter": "C",
+        "text": "Enter plan mode to explore the services and produce the plan, share it for security sign-off, then execute once approved.",
+        "correct": true,
+        "explanation": "Plan mode separates investigation and design from changes, which is what a mandatory pre-implementation review needs. The plan is the review artifact, the codebase stays untouched during the two-day wait, and execution follows the approved approach. Knowing the answer yourself does not remove the stakeholder gate."
+      },
+      {
+        "letter": "D",
+        "text": "Enter plan mode for the design and the review, and remain in plan mode during implementation so every change is proposed before it is made.",
+        "correct": false,
+        "explanation": "Plan mode is read-only; staying in it means the implementation never happens. Once the approach is approved, execution needs a mode that can edit files. Plan for the gate, then execute."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Claude Code Config",
+    "prompt": "Your <code>CLAUDE.md</code> contains: \"Never force-push. Never run <code>rm -rf</code> outside <code>tmp/</code>. Always run <code>npm test</code> after editing a file. Prefer named exports over default exports.\" Last week a session force-pushed over a shared branch. Which restructuring is appropriate?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Force-push and <code>rm -rf</code> rules into <code>permissions.deny</code>, tests into a <code>PostToolUse</code> hook, export preference stays in <code>CLAUDE.md</code>.",
+        "correct": true,
+        "explanation": "Prohibitions with real consequences need deterministic enforcement, which permissions provide; an action that must happen after every edit is what <code>PostToolUse</code> hooks are for; a stylistic preference is guidance and belongs in <code>CLAUDE.md</code>. Each instruction moves to the mechanism that matches its required strength."
+      },
+      {
+        "letter": "B",
+        "text": "Deny rules for force-push and <code>rm -rf</code>; a <code>PreToolUse</code> hook on <code>Edit</code> that runs <code>npm test</code>; export preference in <code>CLAUDE.md</code>.",
+        "correct": false,
+        "explanation": "Two of three placements are right, but a test run before the edit validates the code that is about to change, not the result. The tests need to follow the edit, which is what <code>PostToolUse</code> provides."
+      },
+      {
+        "letter": "C",
+        "text": "Implement all four rules in a single <code>PreToolUse</code> hook script that inspects each tool call and blocks or warns depending on the rule.",
+        "correct": false,
+        "explanation": "A hook can block dangerous commands, but <code>PreToolUse</code> runs before an edit and cannot run tests after it, and encoding a style preference as a blocking hook is heavy-handed. Permissions express command bans more simply than custom scripts."
+      },
+      {
+        "letter": "D",
+        "text": "Deny rules for force-push and <code>rm -rf</code>; keep the test-after-edit rule and the export preference together in <code>CLAUDE.md</code>.",
+        "correct": false,
+        "explanation": "The bans are now enforced, but running tests after each edit stays probabilistic, and it was listed alongside the bans because the team wants it to happen every time. An action that must always follow an event is a hook."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Claude Code Config",
+    "prompt": "Your pipeline runs <code>claude -p</code> to review pull requests. Two requirements: reviews must follow the team's severity criteria, and the CI session must never push to any remote, even if a prompt injection in a PR asks it to. Where should each requirement be implemented?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Put both the severity criteria and the no-push rule in the project <code>CLAUDE.md</code> so the CI job has consistent context every run.",
+        "correct": false,
+        "explanation": "The severity criteria belong there, but a no-push rule in <code>CLAUDE.md</code> is guidance that a hostile PR can argue against. A rule meant to hold under prompt injection cannot live in the same channel the injection uses."
+      },
+      {
+        "letter": "B",
+        "text": "Severity criteria in <code>CLAUDE.md</code>; a <code>permissions.deny</code> rule for <code>Bash(git push:*)</code> in the settings the CI job uses.",
+        "correct": true,
+        "explanation": "Review criteria are guidance and are exactly what <code>CLAUDE.md</code> provides to a CI-invoked session. A prohibition that must survive adversarial input needs enforcement outside the model, which a deny rule gives. The split follows what each mechanism can guarantee."
+      },
+      {
+        "letter": "C",
+        "text": "Severity criteria in <code>CLAUDE.md</code>; run the job with <code>--allowedTools \"Bash(git:*)\"</code> so only git commands are permitted.",
+        "correct": false,
+        "explanation": "Allowing all git commands allows <code>git push</code>, so the only thing preventing an injected push is the model's judgment. An allowlist needs to exclude the dangerous command, or a deny rule needs to name it."
+      },
+      {
+        "letter": "D",
+        "text": "Pass <code>--allowedTools \"Bash(git:*)\"</code> and restate both requirements in the CI prompt each run so nothing depends on repository files.",
+        "correct": false,
+        "explanation": "Allowing all git commands includes push, so the prompt is the only thing standing in the way of an injected instruction. Restating criteria per run also duplicates what <code>CLAUDE.md</code> already delivers to every session."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Claude Code Config",
+    "prompt": "Terraform files live in <code>infra/*/terraform/</code>, <code>modules/**/</code>, and a few service directories. The team's Terraform conventions must apply whenever any <code>.tf</code> file is edited and nowhere else. They currently sit in the 1,100-line root <code>CLAUDE.md</code>, and developers report the guidance is often ignored. Which mechanism fits?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Move the conventions into <code>CLAUDE.md</code> files inside <code>infra/</code> and <code>modules/</code>, so they load automatically when working in those directories.",
+        "correct": false,
+        "explanation": "Directory-level files help when conventions map to one subtree, but <code>.tf</code> files are spread across several locations including service directories. You would need a copy in each, and any new location is missed. The convention is about file type, not directory."
+      },
+      {
+        "letter": "B",
+        "text": "Create a <code>/terraform</code> skill containing the conventions that developers invoke before editing infrastructure code.",
+        "correct": false,
+        "explanation": "Skills are for on-demand workflows. Conventions that must apply whenever a file type is touched should load automatically; relying on developers to remember an invocation reintroduces the same inconsistency you are trying to remove."
+      },
+      {
+        "letter": "C",
+        "text": "Create <code>.claude/rules/terraform.md</code> with frontmatter <code>paths: [\"**/*.tf\"]</code> so the conventions load only for Terraform edits.",
+        "correct": true,
+        "explanation": "Path-scoped rules load conditionally by glob regardless of directory, which matches conventions tied to a file type spread across the tree. It also removes them from the oversized root file, reducing irrelevant context for everyone else. Automatic, targeted, and maintained in one place."
+      },
+      {
+        "letter": "D",
+        "text": "Move the conventions into <code>.claude/rules/terraform.md</code> without a <code>paths</code> field, so they are out of the root file but still always available.",
+        "correct": false,
+        "explanation": "Splitting the file helps maintainers, but without <code>paths</code> the rule loads in every session, so the context cost and the dilution that led to it being ignored are unchanged. The glob is what makes the rule conditional."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Claude Code Config",
+    "prompt": "About once a week someone needs to turn a design discussion into an Architecture Decision Record with the team's fixed structure, a numbering scheme, and a link check. Today each person pastes the template and instructions into the chat. Which configuration mechanism should hold this workflow?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "A skill at <code>.claude/skills/adr/SKILL.md</code> with the template and steps, invoked as <code>/adr</code> on demand.",
+        "correct": true,
+        "explanation": "A multi-step, task-specific workflow used on demand is what skills are for: shared through the repo, invoked when needed, and out of context the rest of the time. <code>CLAUDE.md</code> would load it into every session; rules and hooks trigger on file edits, not on a request."
+      },
+      {
+        "letter": "B",
+        "text": "A section in the project <code>CLAUDE.md</code> describing the ADR format so Claude applies it whenever a design decision comes up in conversation.",
+        "correct": false,
+        "explanation": "Always-loaded context suits universal standards. A weekly workflow with a long template is not universal; it consumes context in every session and still depends on Claude recognizing when a discussion counts as a decision."
+      },
+      {
+        "letter": "C",
+        "text": "A <code>.claude/rules/adr.md</code> file with <code>paths: [\"docs/adr/**\"]</code> so the structure loads whenever an ADR file is edited.",
+        "correct": false,
+        "explanation": "Path rules load when matching files are edited, which covers touching an existing record but not the starting point: someone asks for a new record from a discussion before any file exists. The trigger is a request, not a path."
+      },
+      {
+        "letter": "D",
+        "text": "A <code>PostToolUse</code> hook on <code>Write</code> under <code>docs/adr/</code> that validates numbering and links after Claude creates the file.",
+        "correct": false,
+        "explanation": "A hook is a good later addition for enforcing numbering and link checks deterministically, but it cannot drive the drafting workflow itself. On its own it validates output from a process that still has to be described somewhere."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Claude Code Config",
+    "prompt": "<code>CLAUDE.md</code> says to run Prettier after editing any file. Roughly 30% of Claude's commits still contain unformatted code, and CI rejects them. You want formatting to happen after every edit without depending on the model remembering. How should this be configured?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "A <code>PreToolUse</code> hook matching <code>Edit</code> and <code>Write</code> that runs Prettier on the target file before the change is applied.",
+        "correct": false,
+        "explanation": "Running before the edit formats the old contents; the new text Claude writes arrives afterward and is unformatted again. The hook runs deterministically but at the wrong moment for this goal."
+      },
+      {
+        "letter": "B",
+        "text": "Add a git pre-commit hook that runs Prettier so any unformatted files are fixed at commit time regardless of how they were edited.",
+        "correct": false,
+        "explanation": "A pre-commit hook is a sensible backstop for the repository as a whole, but it fires only when a commit happens, so Claude reads and reasons about unformatted files during the session and commits made outside git hooks are not covered. It is complementary, not the fix for after-every-edit."
+      },
+      {
+        "letter": "C",
+        "text": "A <code>PostToolUse</code> hook matching <code>Bash</code> that runs Prettier across the repository after every command, catching whatever was edited.",
+        "correct": false,
+        "explanation": "It runs deterministically, but on the wrong trigger: edits made with <code>Edit</code> or <code>Write</code> do not fire it until some later shell command, and formatting the whole repository each time is slow. Match the hook to the tools that change files."
+      },
+      {
+        "letter": "D",
+        "text": "A <code>PostToolUse</code> hook matching <code>Edit</code> and <code>Write</code> that runs Prettier on the file that was just changed.",
+        "correct": true,
+        "explanation": "The hook fires deterministically after each file-changing tool call, so the new contents are formatted immediately and only the touched file is processed. This matches the trigger to the event and removes dependence on the model remembering the CLAUDE.md instruction."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Claude Code Config",
+    "prompt": "When Claude Code edits a source file, you want the matching unit tests to run immediately and, if they fail, the failure output to be shown to Claude so it fixes the regression in the same turn. Which hook configuration achieves this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "A <code>Stop</code> hook that runs the full test suite when Claude finishes responding and blocks completion until everything passes.",
+        "correct": false,
+        "explanation": "A Stop hook does provide feedback, but only once per response, after possibly many edits, and running the whole suite each time is slow. The requirement is per-edit feedback that lets Claude fix the specific regression it just introduced."
+      },
+      {
+        "letter": "B",
+        "text": "A <code>PostToolUse</code> hook on <code>Edit|Write</code> that runs the related tests and, on failure, exits with code 0 and prints the failure output to stdout.",
+        "correct": false,
+        "explanation": "Exit code 0 tells Claude Code the hook succeeded; stdout from a PostToolUse hook is shown in the transcript but not treated as feedback the model must act on. The tests run, but the failing output does not reach Claude as a signal to fix anything."
+      },
+      {
+        "letter": "C",
+        "text": "A <code>PostToolUse</code> hook on <code>Edit|Write</code> that runs the related tests and, on failure, exits with code 1 and writes the failures to stderr.",
+        "correct": false,
+        "explanation": "Exit code 1 is a non-blocking error: Claude Code shows the stderr to the user and continues, but does not feed it back to the model. The tests ran and failed, and Claude carries on unaware."
+      },
+      {
+        "letter": "D",
+        "text": "A <code>PostToolUse</code> hook on <code>Edit|Write</code> that runs related tests and, on failure, exits with code 2 and writes failures to stderr.",
+        "correct": true,
+        "explanation": "For a <code>PostToolUse</code> hook, exit code 2 signals a blocking result and its stderr is fed back to Claude, so the model sees the failing tests right after the edit and can correct them in the same turn. This is deterministic and per-edit, unlike the alternatives."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Claude Code Config",
+    "prompt": "Refunds over $500 must be approved by a human. The <code>process_refund</code> MCP server is vendor-hosted and cannot be modified. Your system prompt states the rule, yet 2% of refunds above the limit went through last quarter. How should the rule be enforced in the Agent SDK?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "A <code>PreToolUse</code> hook on <code>process_refund</code> that denies calls with <code>amount</code> over 500 and returns a message pointing to <code>escalate_to_human</code>.",
+        "correct": true,
+        "explanation": "A hook intercepts the outgoing tool call in code, so the limit holds regardless of what the model decided, and the returned message redirects it to the escalation workflow. Since the tool itself cannot be changed, interception is the only place a deterministic guarantee can live."
+      },
+      {
+        "letter": "B",
+        "text": "A <code>PreToolUse</code> hook on <code>process_refund</code> that caps <code>amount</code> at 500 by rewriting the input, so the call proceeds within policy.",
+        "correct": false,
+        "explanation": "Rewriting the input keeps the call inside the limit, but silently refunds a different amount than the agent decided and the customer expects, and no human ever sees the case. The rule was approval, not truncation."
+      },
+      {
+        "letter": "C",
+        "text": "Ask the vendor to add server-side validation that rejects refunds over $500 with a business error, and keep the prompt rule in place in the meantime.",
+        "correct": false,
+        "explanation": "Server-side enforcement would be ideal defence in depth, but the scenario states the server cannot be modified, and a vendor request has no delivery date. The rule needs to hold now, from your side of the integration."
+      },
+      {
+        "letter": "D",
+        "text": "A <code>PreToolUse</code> hook on <code>process_refund</code> that records over-limit calls to an audit log and allows them, with a nightly report to finance.",
+        "correct": false,
+        "explanation": "Auditing is deterministic, but the refund has already been paid by the time finance reads the report. The policy requires approval before the action, so the hook must block rather than record."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Claude Code Config",
+    "prompt": "<code>lookup_order</code> is a third-party MCP tool whose results include full payment card numbers. Compliance requires that the model never receives a full card number. The system prompt already says not to repeat card details, but the numbers still appear in the model's context and in your logs. What should you implement?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "A filter on the agent's final reply that masks any card-number pattern before the message is sent to the customer.",
+        "correct": false,
+        "explanation": "Output filtering protects the customer-facing message but the requirement is about what the model receives. The number is still in context, in the transcript, and in your logs, so the compliance obligation is not met."
+      },
+      {
+        "letter": "B",
+        "text": "A <code>PostToolUse</code> hook on <code>lookup_order</code> that masks card numbers in the tool result before it is returned to the model.",
+        "correct": true,
+        "explanation": "The hook intercepts the tool result after the call and before the model processes it, which is the only point where you can guarantee the model never sees the raw number from a tool you do not control. It is deterministic and independent of prompt compliance."
+      },
+      {
+        "letter": "C",
+        "text": "Strengthen the system prompt to instruct the model to disregard card numbers in tool output and not include them in reasoning or replies.",
+        "correct": false,
+        "explanation": "The model cannot un-see data in its context, and an instruction does not remove the number from the transcript or logs. Compliance rules about data exposure need enforcement in the data path, not in guidance."
+      },
+      {
+        "letter": "D",
+        "text": "A <code>PostToolUse</code> hook on <code>lookup_order</code> that deletes the card field from the session transcript and logs after the model's turn completes.",
+        "correct": false,
+        "explanation": "Scrubbing the transcript afterward limits retention, but the model has already received the number and may have reasoned with or repeated it. The requirement is that the model never receives it, which means altering the result before it is returned."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Claude Code Config",
+    "prompt": "The team needs a Postgres MCP server available to all eight developers, each with their own <code>DATABASE_URL</code>. One developer is also trialling a Figma MCP server that nobody else has asked for. How should the two servers be configured?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Both servers in the project <code>.mcp.json</code>, with the Figma entry documented as experimental so teammates know to disregard its connection errors.",
+        "correct": false,
+        "explanation": "A committed server loads for everyone; teammates without Figma credentials see connection failures in every session and the tool list gains entries nobody else uses. Experimental servers belong in the scope of the person experimenting."
+      },
+      {
+        "letter": "B",
+        "text": "Both servers in each developer's <code>~/.claude.json</code>, with the Postgres block shared through the team wiki for people to copy.",
+        "correct": false,
+        "explanation": "User scope keeps Figma private, but distributing the shared Postgres configuration by copy-paste guarantees drift and skips version control. Project scope exists precisely so shared tooling ships with the repository."
+      },
+      {
+        "letter": "C",
+        "text": "Postgres in the project <code>.mcp.json</code> using <code>${DATABASE_URL}</code>, and Figma in that developer's user-scoped <code>~/.claude.json</code>.",
+        "correct": true,
+        "explanation": "Shared team tooling goes in project scope, committed, with variable expansion so each developer's credentials stay out of the repo. Personal or experimental servers go in user scope where they affect only that person. Both remain available simultaneously in that developer's sessions."
+      },
+      {
+        "letter": "D",
+        "text": "Postgres in <code>.mcp.json</code> with each developer's connection string committed under their username, and Figma in <code>.claude/settings.local.json</code>.",
+        "correct": false,
+        "explanation": "Committing per-user connection strings puts credentials in the repository, which variable expansion is designed to prevent. Local settings files hold permissions and preferences, not MCP server definitions, so the Figma entry would not load."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Claude Code Config",
+    "prompt": "You have three pieces of context for Claude Code: a high-level architecture overview every task needs; a 40-page design document relevant only to this quarter's billing refactor; and a one-off bug report you are about to fix. How should each be provided?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Architecture overview in <code>CLAUDE.md</code>; design document via <code>@docs/billing-refactor.md</code> in refactor prompts; bug report inline.",
+        "correct": true,
+        "explanation": "Universal, cross-session context belongs in <code>CLAUDE.md</code>. A large document needed only for some tasks is best pulled in on demand with an <code>@</code> reference so it does not load everywhere. A one-off detail is simplest stated inline. Each choice matches reusability and specificity."
+      },
+      {
+        "letter": "B",
+        "text": "All three in <code>CLAUDE.md</code>, with the design document imported via <code>@docs/billing-refactor.md</code> and the bug report under a Current Work heading at the top.",
+        "correct": false,
+        "explanation": "Importing the 40-page document into <code>CLAUDE.md</code> loads it into every session for every developer, including unrelated work. A one-off bug report in a shared file also goes stale immediately and needs removing later."
+      },
+      {
+        "letter": "C",
+        "text": "Reference all three with <code>@</code> paths in each prompt so nothing is loaded unless the developer explicitly asks for it that session.",
+        "correct": false,
+        "explanation": "The architecture overview is needed every time; making developers remember to reference it produces sessions that lack basic context. <code>@</code> references suit task-specific material, not the baseline everyone needs."
+      },
+      {
+        "letter": "D",
+        "text": "Architecture overview in <code>CLAUDE.md</code>; design document in <code>.claude/rules/billing.md</code> with <code>paths: [\"src/billing/**\"]</code>; bug report inline.",
+        "correct": false,
+        "explanation": "Path rules are for conventions that should apply whenever matching files are edited. A 40-page design document would load on every billing edit for every developer, long after the refactor ends. Task-specific material is better pulled in on demand."
+      }
+    ]
+  }
+]

@@ -1,0 +1,498 @@
+[
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "Your agentic loop occasionally ends a conversation with the agent's message \"Let me look up that order for you\" and no further action. Inspecting the failing responses, each contains a text block followed by a <code>tool_use</code> block for <code>lookup_order</code>, and <code>stop_reason</code> is <code>tool_use</code>. Your loop code exits whenever the response contains any text content, treating text as the final answer. What is the correct fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Continue the loop whenever <code>stop_reason</code> is <code>tool_use</code>, execute every tool block, and stop only when <code>stop_reason</code> is <code>end_turn</code>.",
+        "correct": true,
+        "explanation": "The loop's job is to act on what the model requested, and <code>stop_reason</code> is the authoritative signal. A response can carry explanatory text alongside tool calls; treating the presence of text as completion discards the requested tool call. Keying termination on <code>end_turn</code> resolves the bug without adding prompt rules or heuristics that will fail in other combinations."
+      },
+      {
+        "letter": "B",
+        "text": "Instruct the model in the system prompt to emit tool calls without any accompanying text so the text-presence check remains a reliable completion signal.",
+        "correct": false,
+        "explanation": "This patches the loop's incorrect assumption with a probabilistic prompt rule. The model may still add brief text, and the loop would again exit prematurely. It also removes useful narration for the customer. The bug is in the control flow, not the model's behaviour."
+      },
+      {
+        "letter": "C",
+        "text": "Add a maximum of eight iterations and treat any response containing text as final once that cap is reached, to bound runaway tool calling.",
+        "correct": false,
+        "explanation": "An iteration cap does not address why the loop stops early; it adds a second unrelated stopping rule. Caps are acceptable as a safety fallback, but the primary termination decision must come from <code>stop_reason</code>, otherwise both short and long conversations misbehave."
+      },
+      {
+        "letter": "D",
+        "text": "Parse the text block for phrases such as \"let me\" or \"I will\" and continue the loop when they appear, since they indicate the model intends further action.",
+        "correct": false,
+        "explanation": "Parsing natural language to infer whether the model wants to continue is the anti-pattern the structured API avoids. Phrasing varies and localisation breaks the heuristic. The response already carries an explicit machine-readable signal in <code>stop_reason</code> and the <code>tool_use</code> block itself."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "Company policy requires manager approval for any refund above $500. Your system prompt states this rule clearly and includes two examples, yet last month the agent called <code>process_refund</code> for three refunds of $700 or more without escalating. Finance has told you a single further violation will pause the agent programme. Which change gives the guarantee you need?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add the $500 limit to the <code>process_refund</code> tool description so the model sees the constraint at the moment it selects the tool.",
+        "correct": false,
+        "explanation": "Tool descriptions influence selection, but they are still read and applied probabilistically. The rule already exists in the system prompt and was violated; moving or duplicating it changes the odds, not the outcome class. Finance has asked for zero violations, which text cannot promise."
+      },
+      {
+        "letter": "B",
+        "text": "Intercept outgoing <code>process_refund</code> calls with a hook that blocks amounts above $500 and redirects to <code>escalate_to_human</code>.",
+        "correct": true,
+        "explanation": "A tool-call interception hook is deterministic: the refund cannot execute regardless of how the model reasoned. Returning a message that redirects to escalation keeps the agent productive on the case. This is the pattern for business rules that need guaranteed compliance rather than high-probability compliance."
+      },
+      {
+        "letter": "C",
+        "text": "Expand the few-shot examples to six cases spanning $400 to $2,000 so the model learns where the threshold sits and how to hand off each one.",
+        "correct": false,
+        "explanation": "More examples may reduce the error rate, and are worth having for tone and handoff quality, but they cannot eliminate it. The scenario explicitly demands a guarantee. Prompt-based guidance is the right tool for judgement calls, not for a hard numeric policy boundary."
+      },
+      {
+        "letter": "D",
+        "text": "Run a nightly audit job that reviews refunds above $500 and automatically reverses any that lack a recorded manager approval.",
+        "correct": false,
+        "explanation": "Reversal after the fact still means the violation occurred, and the customer has already been told the refund was issued. An audit is useful for observability but does not prevent the action. Prevention at the tool-call boundary is where deterministic control exists."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "When the agent calls <code>escalate_to_human</code>, the human team receives only the customer's email and the ticket subject. Support leads report that escalated cases take 11 minutes longer than cases opened directly with humans, because agents must re-ask the customer for order numbers and re-diagnose the problem. Human agents do not have access to the agent's conversation transcript. What should the escalation include?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "The full raw conversation transcript plus every tool result, so the human can reconstruct the situation exactly as the agent saw it during the case.",
+        "correct": false,
+        "explanation": "A raw transcript with 40-field tool payloads shifts the reading burden to the human and rarely saves time; the lead's complaint is about re-diagnosis, which a transcript does not perform. Structured conclusions are faster to act on than raw evidence, and the transcript can be linked separately if needed."
+      },
+      {
+        "letter": "B",
+        "text": "A structured handoff summary: verified customer ID, order numbers, root cause, amount at stake, and a recommended action.",
+        "correct": true,
+        "explanation": "The human lacks the transcript, so the escalation payload must carry the investigation's conclusions in a form that can be acted on immediately. Customer ID, order references, root cause, amounts, and a recommended next step remove the re-asking and re-diagnosis that account for the delay. This is the standard mid-process handoff protocol."
+      },
+      {
+        "letter": "C",
+        "text": "Keep the agent in the loop after escalation so the human can ask it questions about the case rather than the customer.",
+        "correct": false,
+        "explanation": "This adds a second conversation and latency for the human, and the agent's context may have been compacted by the time questions arrive. It also keeps the agent engaged on a case it has already handed off. A handoff should transfer knowledge once, up front, not on demand."
+      },
+      {
+        "letter": "D",
+        "text": "Escalate earlier in the conversation, before investigation, so the human gathers the details themselves in one pass with the customer.",
+        "correct": false,
+        "explanation": "Escalating before investigation throws away the agent's ability to resolve cases and would drive first-contact resolution down, the opposite of the programme goal. The problem is not when the handoff happens but that the handoff carries no useful information."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Agentic Architecture",
+    "prompt": "A colleague proposes replacing the agent's tool selection with a fixed decision tree: a regex classifies the message as refund, address change, or billing, and each class runs a hardcoded tool sequence such as <code>get_customer</code> then <code>lookup_order</code> then <code>process_refund</code>. They argue this removes unpredictability. Your logs show 30% of messages combine concerns or describe situations no class anticipates. How should you respond?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Adopt the decision tree for the three common classes and route anything the regex cannot classify to <code>escalate_to_human</code>.",
+        "correct": false,
+        "explanation": "This sends 30% of traffic to humans by construction and removes the model's ability to handle the mixed and novel cases that are the point of using an agent. It trades resolution rate for a predictability the fixed sequences cannot deliver on messy real inputs anyway."
+      },
+      {
+        "letter": "B",
+        "text": "Adopt the decision tree but let the model fill in tool arguments at each step, so sequencing stays fixed while parameter extraction remains flexible to phrasing.",
+        "correct": false,
+        "explanation": "Fixing the sequence is the part that breaks on multi-concern and unanticipated requests; letting the model only fill arguments does not restore its ability to choose a different investigation path. This keeps the rigidity while adding the complexity of two decision systems."
+      },
+      {
+        "letter": "C",
+        "text": "Keep model-driven tool selection, and enforce only genuinely mandatory ordering, such as verification before refunds, programmatically.",
+        "correct": true,
+        "explanation": "The agentic loop exists so the model can decide the next tool from context, which is what handles combined and novel requests. Predictability where it truly matters comes from programmatic prerequisites on specific transitions, not from scripting every path. This keeps adaptability and adds determinism only where the business requires it."
+      },
+      {
+        "letter": "D",
+        "text": "Keep model-driven selection but add a system prompt instruction listing the expected tool order for each request type as guidance.",
+        "correct": false,
+        "explanation": "Describing expected sequences in the prompt is reasonable guidance, but it does not answer the colleague's concern about guarantees, and it nudges the model toward the same rigid paths for mixed requests. Where ordering must be guaranteed, prompt text is the wrong mechanism; where it need not be, the list adds little."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Agentic Architecture",
+    "prompt": "Yesterday you spent 90 minutes in a named session, <code>auth-refactor</code>, having Claude Code analyse the authentication module and agree a refactoring plan. This morning a teammate merged changes to <code>session.ts</code>, <code>token.ts</code>, and <code>middleware.ts</code>. You run <code>claude --resume auth-refactor</code> and Claude proposes edits based on yesterday's file contents. What is the most efficient way to continue?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Continue the resumed session and tell Claude which three files changed, asking it to re-read those before revising the plan.",
+        "correct": true,
+        "explanation": "Most of yesterday's analysis is still valid; only three files are stale. Informing the resumed session about the specific changes lets Claude re-read those files and adjust the plan, preserving the 90 minutes of shared understanding. Full re-exploration or a fresh session pays for context that has not changed."
+      },
+      {
+        "letter": "B",
+        "text": "Start a fresh session and have Claude re-analyse the module from scratch so it does not work from stale tool results at any point.",
+        "correct": false,
+        "explanation": "A fresh start is the right call when most prior tool results are stale, which is not the case here: the merge touched three files in a module Claude has already mapped. Redoing 90 minutes of analysis to refresh three files is disproportionate."
+      },
+      {
+        "letter": "C",
+        "text": "Fork the session so the original analysis stays intact, then explore the impact of the merge in the forked branch.",
+        "correct": false,
+        "explanation": "Forking is for exploring divergent approaches from a shared baseline. The teammate's merge is not an alternative approach to evaluate; it is a fact the plan must incorporate. The fork would still contain the stale file contents and would need the same update message."
+      },
+      {
+        "letter": "D",
+        "text": "Resume the session and rely on Claude to detect the modified files automatically the next time it edits them.",
+        "correct": false,
+        "explanation": "Resumed sessions restore conversation history, not a live view of the file system. Claude will keep reasoning from the cached <code>Read</code> results until told otherwise, and may only discover the drift when an <code>Edit</code> fails to match. Stating the changes up front avoids wasted turns."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Agentic Architecture",
+    "prompt": "You have defined four subagents with clear descriptions and system prompts using <code>AgentDefinition</code>. In testing, the coordinator never delegates: it attempts to answer research questions itself using its own web search tool and produces shallow, uncited reports. The coordinator's <code>allowedTools</code> is set to <code>[\"WebSearch\", \"Read\"]</code>. What is the most likely cause?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "The subagent descriptions are not specific enough for the coordinator to judge when delegation is worthwhile compared with acting directly.",
+        "correct": false,
+        "explanation": "Description quality affects which subagent is chosen, but the coordinator here never delegates at all, even for tasks that obviously need document analysis. When a capability is used zero times, the first thing to check is whether it is available, not how it is described."
+      },
+      {
+        "letter": "B",
+        "text": "The coordinator's <code>allowedTools</code> omits <code>Task</code>, so it has no mechanism to spawn subagents and falls back to the tools it does have.",
+        "correct": true,
+        "explanation": "Subagents are invoked through the <code>Task</code> tool. If the coordinator's allowed tool set does not include it, the definitions are inert and the coordinator can only use <code>WebSearch</code> and <code>Read</code>, which matches the observed shallow self-research. Adding <code>Task</code> is the fix; removing <code>WebSearch</code> from the coordinator may then also be worthwhile."
+      },
+      {
+        "letter": "C",
+        "text": "The coordinator's system prompt lacks an explicit instruction to prefer delegation, so it optimises for speed by answering directly.",
+        "correct": false,
+        "explanation": "A delegation instruction is good practice, but the coordinator cannot follow it without a tool that spawns subagents. Adding prompt text while the capability is missing would produce a coordinator that describes delegating and then does the work itself."
+      },
+      {
+        "letter": "D",
+        "text": "The subagents were defined but not registered, so the coordinator is unaware they exist and cannot reference them by name.",
+        "correct": false,
+        "explanation": "The scenario states the agents are defined via <code>AgentDefinition</code>, which is the registration. The coordinator's awareness of subagents does not help if its tool set excludes the spawning mechanism, which is the concrete omission visible in the configuration."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Agentic Architecture",
+    "prompt": "The web search and document analysis subagents both return rich findings to the coordinator. The coordinator then invokes the synthesis subagent with the prompt \"Synthesize the research findings into a report.\" The synthesis agent responds that no findings were provided and produces a generic overview of the topic from its own knowledge. What is the root cause?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "The synthesis agent's <code>AgentDefinition</code> lacks a tool for reading the coordinator's session state, so it cannot retrieve the findings.",
+        "correct": false,
+        "explanation": "There is no session-state tool that would grant a subagent access to the coordinator's history, and designing one would recreate implicit shared memory. Context reaches a subagent through its prompt; the fix is in what the coordinator sends, not in adding tools to the receiver."
+      },
+      {
+        "letter": "B",
+        "text": "Subagents run with isolated context; the coordinator must include the actual search results and analysis output in the synthesis prompt.",
+        "correct": true,
+        "explanation": "A subagent does not inherit the coordinator's conversation history. \"The research findings\" refers to material only the coordinator has seen, so the synthesis agent legitimately reports having nothing. The coordinator must pass the complete findings, ideally as structured data with source metadata, directly in the prompt."
+      },
+      {
+        "letter": "C",
+        "text": "The synthesis prompt is too terse; adding a detailed description of the report structure and quality criteria will resolve the issue.",
+        "correct": false,
+        "explanation": "Report structure guidance is valuable, but the agent's complaint is about missing inputs, not unclear outputs. A longer prompt that still references findings without containing them would fail the same way. Content must be present before format instructions matter."
+      },
+      {
+        "letter": "D",
+        "text": "The web search and document analysis subagents should write their findings to a shared file that the synthesis agent reads when it starts.",
+        "correct": false,
+        "explanation": "A shared file can work as a scratchpad in some designs, but it introduces an out-of-band channel the coordinator cannot observe or filter, weakening hub-and-spoke control. The direct, standard mechanism is for the coordinator to pass findings in the prompt, which is what is missing here."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Agentic Architecture",
+    "prompt": "Tracing a typical research run, you see the coordinator spawn the web search subagent, wait about 90 seconds for it to finish, then spawn the document analysis subagent and wait another 80 seconds. The two tasks read different sources and do not depend on each other. End-to-end latency is dominated by this serial phase. What change reduces latency without restructuring the agents?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Merge web search and document analysis into one subagent so a single invocation covers both source types.",
+        "correct": false,
+        "explanation": "Merging removes the specialisation and tool scoping that keep each agent reliable, and a single agent would still process the two source types one after the other. It trades a clean fix for an architectural regression that does not actually parallelise the work."
+      },
+      {
+        "letter": "B",
+        "text": "Have the coordinator issue both <code>Task</code> calls in a single response so the two subagents run concurrently.",
+        "correct": true,
+        "explanation": "Parallel subagent execution is achieved by the coordinator emitting multiple <code>Task</code> tool calls in one turn rather than one per turn. Since the tasks are independent, this collapses the 170-second serial phase to roughly the longer of the two. It changes only the coordinator's prompting, not the agent structure."
+      },
+      {
+        "letter": "C",
+        "text": "Lower each subagent's <code>max_turns</code> so search and analysis each finish faster and the serial phase shrinks.",
+        "correct": false,
+        "explanation": "Capping turns shortens work by cutting it off, which reduces research quality rather than removing the unnecessary serialisation. The tasks are independent; the fix is to overlap them, not to make each one do less."
+      },
+      {
+        "letter": "D",
+        "text": "Run two coordinator instances, one per source type, and merge their outputs in a final synthesis step.",
+        "correct": false,
+        "explanation": "Duplicating the coordinator breaks the hub-and-spoke model: no single agent observes both branches, handles errors consistently, or partitions scope to avoid overlap. Parallelism is available inside one coordinator's turn without introducing a second hub."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Agentic Architecture",
+    "prompt": "Users increasingly submit narrow factual queries such as \"When did Company X acquire Company Y and for how much?\" alongside broad research topics. Every query runs the full pipeline of web search, document analysis, synthesis, and report generation, so a one-fact question takes over four minutes and returns a twelve-page report. What is the most appropriate coordinator design change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Have the coordinator assess each query's scope and invoke only the subagents it requires, skipping analysis and reporting for simple facts.",
+        "correct": true,
+        "explanation": "The coordinator's role includes deciding which subagents a query needs, not just sequencing a fixed pipeline. Dynamic selection lets a single-fact question run web search alone and answer directly, while broad topics still get full treatment. This addresses both latency and the mismatch between question and output form."
+      },
+      {
+        "letter": "B",
+        "text": "Add a keyword-based classifier in front of the coordinator that routes short questions to a standalone Q&A model, bypassing the research system.",
+        "correct": false,
+        "explanation": "A pre-filter duplicates a judgement the coordinator is well placed to make with full language understanding, and keyword rules will misroute many queries. It also creates a second system to maintain. The coordinator already sees the query; let it decide."
+      },
+      {
+        "letter": "C",
+        "text": "Reduce the report generation subagent's target length so that simple queries produce a short report instead of twelve pages.",
+        "correct": false,
+        "explanation": "Shortening the report treats the symptom. The four-minute latency comes from running document analysis and synthesis that a factual question does not need. Output length settings do not remove unnecessary pipeline stages."
+      },
+      {
+        "letter": "D",
+        "text": "Cache completed reports and serve factual queries from cached content when the topic overlaps a prior research run.",
+        "correct": false,
+        "explanation": "Caching helps only for repeated topics and returns stale figures for facts that change. Most one-off factual questions will miss the cache and still pay the full pipeline cost. The structural issue is that the pipeline is not adaptive to query scope."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Agentic Architecture",
+    "prompt": "Human reviewers reject 25% of generated reports for coverage gaps: a subtopic is mentioned in the introduction but has no supporting findings in the body. The coordinator currently decomposes the topic, delegates once, passes results to synthesis, and returns the report. Reviewers note the gaps are usually obvious from reading the synthesis output itself. What architectural change best addresses this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Double the number of initial search queries per subtopic so that first-pass coverage is broad enough to avoid gaps.",
+        "correct": false,
+        "explanation": "Broader initial search raises cost on every run and still cannot anticipate which subtopics will come back thin. Gaps are only knowable after synthesis. Spending more up front is less efficient than checking the result and filling specific holes."
+      },
+      {
+        "letter": "B",
+        "text": "Add a second, independent synthesis subagent and have the coordinator merge the two syntheses to reduce omissions.",
+        "correct": false,
+        "explanation": "Two syntheses of the same incomplete findings will share the same gaps, because the missing evidence was never gathered. Redundant synthesis addresses variance in writing, not missing inputs, and doubles the most expensive stage."
+      },
+      {
+        "letter": "C",
+        "text": "Have the coordinator check the synthesis for gaps, re-delegate targeted queries, and re-run synthesis until coverage is sufficient.",
+        "correct": true,
+        "explanation": "An iterative refinement loop turns the coordinator's single pass into evaluate, re-delegate with targeted queries, and re-synthesise. Because reviewers can spot the gaps from the synthesis output, the coordinator can too, and it fixes them before the human sees the report. Cost is spent only where gaps actually exist."
+      },
+      {
+        "letter": "D",
+        "text": "Move the gap check to the human reviewers earlier in the pipeline, having them approve the decomposition before delegation begins.",
+        "correct": false,
+        "explanation": "Reviewing decomposition catches narrow plans but not subtopics that were planned and then came back with no usable findings, which is the failure described. It also adds human latency to every run when the system could self-check the output."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Agentic Architecture",
+    "prompt": "An engineer asks your agent to \"add comprehensive tests to the billing service\", a 400-file legacy module with almost no tests. The agent begins with the first file alphabetically, writes tests, moves to the next, and exhausts its context after about 30 files, most of them low-risk utility helpers. Critical payment flows remain untested. Which decomposition strategy should the agent follow instead?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Map the module's structure first, identify high-impact areas, then produce a prioritised plan that adapts as dependencies are discovered.",
+        "correct": true,
+        "explanation": "Open-ended tasks call for adaptive decomposition: understand the structure, find where risk concentrates, and plan in priority order, revising as the code reveals dependencies. This puts effort on payment flows before helpers and survives context limits because the plan, not the alphabet, drives what happens next."
+      },
+      {
+        "letter": "B",
+        "text": "Process the same alphabetical order but spawn a fresh subagent for every 25 files so context does not run out before the module is finished.",
+        "correct": false,
+        "explanation": "Partitioning by count fixes the exhaustion symptom but keeps the arbitrary ordering, so the effort distribution is still unrelated to risk, and per-file tests written in isolation miss cross-file flows. Decomposition should follow the code's importance, not its file names."
+      },
+      {
+        "letter": "C",
+        "text": "Restrict the task to files changed in the last quarter, since recently modified code is the most likely place for defects.",
+        "correct": false,
+        "explanation": "Recency is one useful risk signal, but legacy payment logic that has not changed in years can be the highest-impact code in the module. Narrowing the request this way silently redefines \"comprehensive\" rather than planning how to achieve it."
+      },
+      {
+        "letter": "D",
+        "text": "Use a fixed pipeline: generate tests for every file in one pass, then run a second pass to add integration tests across files.",
+        "correct": false,
+        "explanation": "A fixed two-pass chain suits predictable, uniform work such as reviewing each file in a PR. Here the scope is unknown and far larger than the context budget, so a pass over every file will hit the same wall. Investigation must shape the plan before generation begins."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Agentic Architecture",
+    "prompt": "Your boilerplate generator produces a new CRUD resource: model, migration, HTTP handler, validation schema, and tests, in that order, with each file depending on the previous one. Implemented as an open-ended agent with a goal prompt, it sometimes writes the handler before the model, omits the tests, or invents field names inconsistent across files. Reliability matters more than creativity here. What should you change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Keep the open-ended agent but add a self-review step at the end that checks the five files exist and use consistent field names.",
+        "correct": false,
+        "explanation": "A final self-check catches some omissions but leaves the generation process unpredictable and adds a repair loop after the fact. When the steps are known and fixed, verifying afterwards is slower and less reliable than structuring the work so the errors cannot occur."
+      },
+      {
+        "letter": "B",
+        "text": "Spawn one subagent per file type in parallel so each produces its artifact independently, then merge the five outputs.",
+        "correct": false,
+        "explanation": "The files depend on each other: the handler needs the model's fields, the tests need the handler's routes. Parallel independent generation guarantees the inconsistency you are trying to remove. Parallelism suits independent subtasks, not a dependent chain."
+      },
+      {
+        "letter": "C",
+        "text": "Replace the goal prompt with a single, longer prompt that lists the five files and their required contents in detail.",
+        "correct": false,
+        "explanation": "A longer single prompt still asks the model to hold five interdependent outputs in one generation, where attention dilution and drift produce the inconsistent names you already see. Detail helps, but structure across steps is what enforces order and consistency."
+      },
+      {
+        "letter": "D",
+        "text": "Use prompt chaining: a fixed sequence of focused steps where each step receives the previous step's output as input.",
+        "correct": true,
+        "explanation": "The workflow is predictable and every step's inputs are known, which is exactly the case for a fixed sequential chain. Each prompt does one thing and feeds structured output, such as the model's fields, into the next, so the handler cannot precede the model and field names stay consistent. Dynamic decomposition is for open-ended tasks, not this one."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Agentic Architecture",
+    "prompt": "After a 40-minute session in which Claude built a detailed understanding of a legacy reporting module, your team wants to compare two refactoring strategies, an incremental strangler approach and an in-place rewrite, and pick one. You want both explorations to start from the same analysis without either being influenced by the other's conclusions. What is the most efficient approach?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Ask the same session to explore the strangler approach first, then the rewrite, and finally compare the two.",
+        "correct": false,
+        "explanation": "Exploring sequentially in one session means the rewrite discussion happens with the strangler analysis in context, biasing the comparison and letting abandoned ideas leak into later reasoning. It also risks context exhaustion before the comparison is reached."
+      },
+      {
+        "letter": "B",
+        "text": "Fork the session twice from the current point and explore one strategy in each fork, then compare the outcomes.",
+        "correct": true,
+        "explanation": "Forking creates independent branches that share the 40 minutes of analysis as a common baseline while keeping each exploration isolated. Neither branch sees the other's reasoning, so the comparison is fair, and nothing is re-analysed. This is the intended use of <code>fork_session</code>."
+      },
+      {
+        "letter": "C",
+        "text": "Start two fresh sessions, each seeded with a written summary of the module analysis, and explore one strategy in each.",
+        "correct": false,
+        "explanation": "Fresh sessions with a summary are the right choice when prior context is stale. Here the analysis is current and detailed, and a summary would lose the file-level findings both explorations need. Forking preserves that baseline intact."
+      },
+      {
+        "letter": "D",
+        "text": "Resume the session tomorrow with a prompt asking Claude to outline both strategies side by side in a single response.",
+        "correct": false,
+        "explanation": "A side-by-side outline in one turn is a shallow comparison, not an exploration; neither approach gets investigated against the code. It also has the same cross-contamination problem as sequential exploration, since one response reasons about both at once."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Agentic Architecture",
+    "prompt": "Your CI failure-triage job runs a fixed three-step script: read the test log, read the failing test file, propose a fix. It works for simple assertion failures but produces wrong fixes when the cause is a stale fixture, a misconfigured environment variable, or a flaky external dependency, because the relevant files are never examined. Engineers now distrust its output. How should the job be restructured?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Expand the fixed script to seven steps that also read fixtures, environment config, and dependency manifests on every run.",
+        "correct": false,
+        "explanation": "Adding more fixed steps reads files irrelevant to most failures and still misses causes you have not anticipated. It increases cost on every run while remaining brittle to the next unforeseen category. The problem is the fixed shape, not the step count."
+      },
+      {
+        "letter": "B",
+        "text": "Let the agent form an investigation plan from the log and generate follow-up subtasks based on what each step reveals.",
+        "correct": true,
+        "explanation": "Root-cause triage is an open-ended investigation: the right next file depends on what the log and first reads show. Dynamic decomposition lets the agent follow a stale-fixture clue into fixture files or an environment error into config, rather than proposing fixes from an incomplete picture. Fixed pipelines suit predictable work; this is not that."
+      },
+      {
+        "letter": "C",
+        "text": "Keep the three-step script but only act when the log contains an assertion error, skipping other failure types.",
+        "correct": false,
+        "explanation": "Scoping down avoids embarrassing wrong fixes but abandons the failures that cost engineers the most time to diagnose. It resolves distrust by doing less rather than by investigating properly, and leaves the majority of triage manual."
+      },
+      {
+        "letter": "D",
+        "text": "Run three independent instances of the script and post a fix only when at least two agree, to filter out incorrect proposals.",
+        "correct": false,
+        "explanation": "Agreement between runs that all read the same insufficient inputs is not evidence of correctness; they will agree on the same wrong fix. Consensus filters variance, not missing information. The agent needs to look at different files, not vote."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Agentic Architecture",
+    "prompt": "Your review bot implements its own agentic loop against the Messages API with a hard limit of five iterations as the stopping rule. For large pull requests, the bot posts partial reviews that end mid-analysis, and logs show the fifth response had <code>stop_reason: \"tool_use\"</code> with a pending request to read another file. Small PRs finish fine. What is the correct fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Raise the limit to twenty iterations, which comfortably covers the largest pull requests observed over the past quarter.",
+        "correct": false,
+        "explanation": "A higher cap moves the failure to a larger PR and still treats an arbitrary count as the completion signal. The next unusually large change will produce the same truncated review, and the bot will still post partial output as if it were complete."
+      },
+      {
+        "letter": "B",
+        "text": "Loop while <code>stop_reason</code> is <code>tool_use</code>, stop on <code>end_turn</code>, and keep a generous cap only as an explicit-failure safety fallback.",
+        "correct": true,
+        "explanation": "The model signals whether it has finished; the loop should follow that signal. Continuing on <code>tool_use</code> and stopping on <code>end_turn</code> makes review length follow the work required. A high ceiling remains sensible protection against runaway loops, but hitting it should be surfaced as an error, never posted as a finished review."
+      },
+      {
+        "letter": "C",
+        "text": "Instruct the model in the system prompt to complete its review within five tool calls and summarise remaining concerns if it runs short.",
+        "correct": false,
+        "explanation": "This asks the model to compress its analysis to fit an arbitrary budget and rewards shallow reviews on exactly the PRs that need depth. It also does not fix the loop, which still exits on a count rather than on the model's completion signal."
+      },
+      {
+        "letter": "D",
+        "text": "Have the model end its final message with the marker <code>REVIEW COMPLETE</code> and stop the loop only when that string appears in the text.",
+        "correct": false,
+        "explanation": "Parsing text for a sentinel is the anti-pattern the structured <code>stop_reason</code> field exists to avoid. The model may omit or paraphrase the marker, and a marker present alongside a pending tool call would still be ambiguous. The API already tells you when the turn is finished."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Agentic Architecture",
+    "prompt": "Your extraction agent has tools <code>extract_fields</code>, <code>validate_totals</code>, and <code>write_record</code>, and the system prompt says to validate before writing. In 6% of runs the agent calls <code>write_record</code> directly after extraction, and downstream finance reports now contain invoices whose line items do not sum to the total. Rejecting bad records downstream is expensive. Which change eliminates the problem?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Rewrite the system prompt to describe the validate-then-write sequence in bold at the top and repeat it in the <code>write_record</code> description.",
+        "correct": false,
+        "explanation": "The rule is already in the prompt and is skipped 6% of the time; emphasis and repetition lower the rate but leave a probabilistic gate on a step that feeds financial reporting. When downstream rejection is costly, the sequence needs to be guaranteed, not encouraged."
+      },
+      {
+        "letter": "B",
+        "text": "Add a programmatic prerequisite that blocks <code>write_record</code> until <code>validate_totals</code> has returned a passing result for that document.",
+        "correct": true,
+        "explanation": "A prerequisite gate at the tool-call boundary makes the ordering deterministic: the write cannot execute without a recorded validation pass. The 6% of runs that skip validation are redirected rather than allowed through, and the model can still decide everything else about how it processes the document."
+      },
+      {
+        "letter": "C",
+        "text": "Merge validation into <code>write_record</code> so the write tool computes the sums itself and refuses records that fail.",
+        "correct": false,
+        "explanation": "Folding validation into the write tool prevents bad writes but hides the validation step from the agent, so it loses the chance to retry extraction with the specific error before attempting a write. It also couples two concerns into one tool, making each harder to describe and reuse."
+      },
+      {
+        "letter": "D",
+        "text": "Add few-shot examples to the prompt showing the correct three-call sequence for several invoice types, including edge cases.",
+        "correct": false,
+        "explanation": "Examples improve compliance and are worth having for extraction quality, but they remain guidance. A 6% skip rate on a financially significant step indicates the need for enforcement; more examples shift the rate without providing a guarantee."
+      }
+    ]
+  }
+]

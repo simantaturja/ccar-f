@@ -1,0 +1,405 @@
+[
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Extracted invoice records are inserted directly into a database whose loader rejects any payload that is not exactly the expected JSON shape. Your prompt says \"respond only with JSON matching this schema\", and 4% of responses fail to load: trailing commentary, a missing field, or a string where a number was expected. Which structured output method fits this requirement?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Prefill the assistant turn with <code>{</code> so the model starts inside the JSON object and skips any commentary before it.",
+        "correct": false,
+        "explanation": "Prefilling reliably removes preambles, and for loosely consumed output that is often enough. It does nothing about missing fields or a string in a numeric slot, and it does not validate structure, so the loader's strict contract is still at risk."
+      },
+      {
+        "letter": "B",
+        "text": "Add three few-shot examples of correct records to the prompt so the model sees exactly what valid output looks like.",
+        "correct": false,
+        "explanation": "Examples improve consistency and are valuable for ambiguous fields, but they make compliance more likely rather than certain. A downstream system that rejects any deviation needs a guarantee, which examples cannot provide."
+      },
+      {
+        "letter": "C",
+        "text": "Define an <code>insert_invoice</code> tool whose input schema is the record, force it with <code>tool_choice</code>, and read the <code>tool_use</code> block.",
+        "correct": true,
+        "explanation": "Tool use with a JSON schema is the strictest method available: the output is a schema-validated <code>tool_use</code> block, so syntax errors, extra text, and type mismatches are eliminated. When the consumer cannot tolerate deviation, this is the appropriate choice over prompt formatting or prefill."
+      },
+      {
+        "letter": "D",
+        "text": "Define an <code>insert_invoice</code> tool with the record schema, keep <code>tool_choice</code> on <code>auto</code>, and instruct the model to use it for every document.",
+        "correct": false,
+        "explanation": "The schema is right; leaving <code>tool_choice</code> on <code>auto</code> is not. The model may still reply with text for an unusual document, and the loader rejects it. Forcing the tool closes that path; the instruction alone does not."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your CI service calls the Messages API to write a markdown PR summary that is posted verbatim for humans to read. No system parses it. About 10% of summaries begin with \"Here is a summary of the changes:\" before the first heading, which reviewers find noisy. What is the most proportionate fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Prefill the assistant turn with <code>## Summary</code> so the response begins at the first heading and the preamble has nowhere to go.",
+        "correct": true,
+        "explanation": "Prefilling directly controls how free-form output begins, which is exactly the problem, and it costs nothing in tooling. Schema enforcement is unnecessary because nothing parses the text, and prompt instructions alone are what produced the 10% rate."
+      },
+      {
+        "letter": "B",
+        "text": "Define a <code>post_summary</code> tool with a <code>markdown</code> string field and force it with <code>tool_choice</code> so the output is structured.",
+        "correct": false,
+        "explanation": "Tool use guarantees a schema, but the schema here is a single free-text field, so you gain plumbing without gaining anything the requirement needs. Strictness should match the consumer, and this consumer is a human reading markdown."
+      },
+      {
+        "letter": "C",
+        "text": "Add a system prompt line stating the response must start directly with a markdown heading and contain no introductory sentence.",
+        "correct": false,
+        "explanation": "This is reasonable and may reduce the rate, but instructions about the first line are precisely the kind of formatting guidance the model sometimes overrides. When a lighter mechanism exists that controls the opening deterministically, use it."
+      },
+      {
+        "letter": "D",
+        "text": "Include a few-shot example of a summary that begins directly with a heading so the model imitates the format.",
+        "correct": false,
+        "explanation": "An example improves consistency and may reduce the rate further, but it remains a probabilistic nudge about the first line. Prefilling controls the first line directly and costs less context."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "You moved invoice extraction to tool use with a strict JSON schema, and syntax failures dropped to zero. Downstream, 3% of records still fail: line items that do not sum to <code>total</code>, and a shipping date placed in <code>invoice_date</code>. A teammate proposes switching to prefilled JSON with regex validation. What should you do?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Switch to prefilled JSON output with regex checks per field, since the schema approach evidently is not catching these errors and regex can encode the rules.",
+        "correct": false,
+        "explanation": "The remaining errors are semantic, and no output method catches them: prefill plus regex validates shape and format, not whether numbers add up or a date is the right date. Switching would bring back the syntax failures you just eliminated."
+      },
+      {
+        "letter": "B",
+        "text": "Add <code>calculated_total</code> to the schema so the model sums the line items itself, and reject any record where it differs from <code>total</code>.",
+        "correct": false,
+        "explanation": "Having the model compute a check value is a good self-correction pattern and worth adding. Rejecting the record ends the story too early: the mismatch should be fed back so the model can correct the extraction, and misplaced dates are not covered."
+      },
+      {
+        "letter": "C",
+        "text": "Add an instruction to the prompt asking the model to double-check totals and date fields before finalizing the extraction.",
+        "correct": false,
+        "explanation": "Self-checking instructions have some effect but are probabilistic and give you no signal when they fail. Semantic validation in code, with the error fed back, is both more reliable and observable."
+      },
+      {
+        "letter": "D",
+        "text": "Keep tool use, add code validation for sums and date roles, and on failure re-request with the document, failed extraction, and the error.",
+        "correct": true,
+        "explanation": "Strict schemas eliminate syntax errors but not semantic ones, so the fix is a validation layer for the semantics plus retry-with-error-feedback so the model can correct itself. Adding a <code>calculated_total</code> field alongside <code>stated_total</code> can also surface discrepancies. This builds on the working method instead of abandoning it."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Three outputs need structured handling: (1) extracted records loaded by a strict validator; (2) a legacy pipeline that expects raw JSON text on stdout and cannot handle <code>tool_use</code> responses; (3) an internal reviewer note that a person reads. Which pairing of method to output is most appropriate?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "(1) prompt-based JSON with validation and retry, (2) tool use with a JSON schema, (3) prefill a markdown heading.",
+        "correct": false,
+        "explanation": "This inverts the first two. The strict validator is the case that most needs schema-guaranteed output, and the legacy pipeline explicitly cannot consume a <code>tool_use</code> response, so tool use there breaks integration regardless of how compliant the JSON is."
+      },
+      {
+        "letter": "B",
+        "text": "(1) tool use with a JSON schema, (2) prefill <code>{</code> with validation, (3) prompt-based formatting.",
+        "correct": true,
+        "explanation": "Strictness should match the consumer. The validator gets the guaranteed method; the legacy pipeline cannot accept tool use, so prefilled JSON with validation is the strongest option it can consume; a human-read note needs only prompt guidance. Each method is the most reliable one the consumer can accept."
+      },
+      {
+        "letter": "C",
+        "text": "(1) tool use with a JSON schema, (2) tool use with a JSON schema, (3) tool use with a JSON schema.",
+        "correct": false,
+        "explanation": "Uniform tool use is the most reliable method in isolation, but the legacy pipeline cannot consume it, so output (2) would require an adapter you were told does not exist. For the human note it adds structure nobody reads. Consistency is not the goal; fit is."
+      },
+      {
+        "letter": "D",
+        "text": "(1) prefill <code>{</code> with validation, (2) prefill <code>{</code> with validation, (3) prefill a markdown heading.",
+        "correct": false,
+        "explanation": "Prefill controls how output begins and is a good fit for the legacy pipeline and arguably the note, but it does not validate structure. The strict validator will still reject shape and type errors that tool use would have prevented."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Reviewing generated code for a paginated list endpoint, you find six problems: a typo in a log message, an inconsistent variable name, a missing null check, an incorrect log level, plus two that interact: the cursor encoding breaks when the sort order changes, and the sort order defaults differently in two code paths. How should you feed this back?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Fix them one at a time in six separate turns, starting with the cursor bug, so each change can be tested before the next.",
+        "correct": false,
+        "explanation": "Sequential iteration is right for independent problems, but separating the cursor and sort-order issues risks a cursor fix that assumes a default the next turn changes. The two interacting issues need to be described together."
+      },
+      {
+        "letter": "B",
+        "text": "Send all six in one message ordered by severity so Claude can plan a single coherent set of edits and you review once.",
+        "correct": false,
+        "explanation": "One large message is efficient but blends a subtle design interaction with four unrelated nits, making it harder to verify that the cursor and sort fix is right. Batching is for issues that must be considered together, not for everything at once."
+      },
+      {
+        "letter": "C",
+        "text": "Send the cursor and sort-order issues together in one message explaining the interaction, then the four independent issues in follow-ups.",
+        "correct": true,
+        "explanation": "Interacting problems need to be evaluated together so the fix is consistent across both; fixing one alone can be undone by the other. Independent nits are cheap to handle sequentially and keep each change verifiable. Matching the batching to whether issues interact is the point."
+      },
+      {
+        "letter": "D",
+        "text": "Ask Claude to review the endpoint itself and list any problems it finds, then confirm which of its findings match yours before it edits.",
+        "correct": false,
+        "explanation": "A self-review can surface issues but the model retains its generation context and is less likely to question its own decisions, and you already have the findings. This delays the fixes and gives less targeted feedback than the specifics you hold."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Prompt & Structured Output",
+    "prompt": "You ask Claude Code to add a caching layer to a service in a domain new to you. The first implementation is clean but has no invalidation story and ignores what happens when the cache is unavailable, things you did not think to specify because you did not know to. What refinement technique addresses this gap before the next attempt?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Write a test suite covering invalidation and cache-unavailable behaviour first, then have Claude iterate until the tests pass.",
+        "correct": false,
+        "explanation": "Test-driven iteration is powerful once you know what to test. Here the gap is that you did not know invalidation and failure modes mattered, so the tests you write will miss the next unknown just as the prompt did."
+      },
+      {
+        "letter": "B",
+        "text": "Ask Claude to interview you about requirements, edge cases, and failure modes before implementing, then answer its questions.",
+        "correct": true,
+        "explanation": "The interview pattern is designed for unfamiliar domains: the model surfaces considerations you have not anticipated, such as invalidation strategy and degraded-mode behaviour, before code is written. The other techniques assume you already know what to specify."
+      },
+      {
+        "letter": "C",
+        "text": "Provide two or three concrete input and output examples of cache reads and writes so the expected behaviour is unambiguous.",
+        "correct": false,
+        "explanation": "Examples are the best fix when prose is interpreted inconsistently, but the problem here is missing requirements, not misread ones. Examples of reads and writes would not reveal that invalidation was never discussed."
+      },
+      {
+        "letter": "D",
+        "text": "Send the two identified gaps as a single detailed message so Claude adds invalidation and fallback handling in one revision.",
+        "correct": false,
+        "explanation": "This fixes the two issues you happened to notice, but in an unfamiliar domain there are likely others you have not. Targeted feedback closes known gaps; it does not discover unknown ones."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Claude Code generates tests for a date-parsing utility in CI. The tests pass but miss null input, February 29 in non-leap years, and timezone offsets like <code>+05:45</code>, all of which have caused production bugs. The prompt says \"cover edge cases thoroughly\". What is the most effective refinement?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add a <code>CLAUDE.md</code> rule stating that generated tests must consider null inputs, calendar boundaries, and timezone handling in every module.",
+        "correct": false,
+        "explanation": "A general rule broadens attention but stays abstract; the model must still translate it into the specific cases that bit you. It is useful project context and not wrong, but less direct than showing the exact failures."
+      },
+      {
+        "letter": "B",
+        "text": "Replace \"cover edge cases thoroughly\" with \"be exhaustive and think carefully about every possible malformed input before writing tests\".",
+        "correct": false,
+        "explanation": "Rephrasing a vague instruction into a more emphatic vague instruction rarely changes outcomes. The model already believes it covered edge cases; it needs to see which ones it missed."
+      },
+      {
+        "letter": "C",
+        "text": "Reply in the current CI conversation with the three missed cases as concrete input and expected output, and ask for tests covering them.",
+        "correct": false,
+        "explanation": "Concrete cases are the right feedback, but a reply in one CI conversation is lost when the next run starts from a fresh prompt. The same examples belong in the CI prompt itself so every future generation benefits."
+      },
+      {
+        "letter": "D",
+        "text": "Add the three missed cases as concrete input and expected-output examples to the CI prompt, and re-run to confirm they are covered.",
+        "correct": true,
+        "explanation": "Targeted feedback on specific failures, expressed as concrete input and expected output, is the most effective refinement and communicates far more than an abstract instruction. Putting the examples into the CI prompt makes the improvement persistent. Rewording the vague instruction or adding a general rule leaves the model guessing."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your invoice schema marks <code>due_date</code> as a required string. Roughly 12% of supplier invoices state no due date. In those cases the model returns a plausible date, often 30 days after the invoice date, and the finance team has paid several invoices on fabricated deadlines. What schema change addresses this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Make <code>due_date</code> nullable and instruct the model to return <code>null</code> when the document does not state one.",
+        "correct": true,
+        "explanation": "A required field forces the model to produce something even when the source has nothing, and fabrication is the predictable result. Allowing <code>null</code> lets it represent absence honestly. Prompt warnings and post-checks work against the schema's pressure instead of removing it."
+      },
+      {
+        "letter": "B",
+        "text": "Keep the field required but add a prompt instruction not to infer or calculate a due date that is not explicitly written in the document.",
+        "correct": false,
+        "explanation": "The instruction and the schema now conflict: the model must emit a string yet must not invent one. Under that pressure it will usually still produce a date. Removing the requirement is what lets the instruction be followed."
+      },
+      {
+        "letter": "C",
+        "text": "Make <code>due_date</code> optional so it can be omitted, and add a post-check flagging any due date exactly 30 days after the invoice date.",
+        "correct": false,
+        "explanation": "Optional is close to right, but omission and <code>null</code> mean different things downstream: a missing key can be read as \"not extracted\" rather than \"not stated\". The 30-day check then catches one fabrication pattern and flags legitimate net-30 invoices."
+      },
+      {
+        "letter": "D",
+        "text": "Add a <code>due_date_confidence</code> number so downstream can skip due dates the model reports with low confidence.",
+        "correct": false,
+        "explanation": "Confidence helps prioritize review but still yields a fabricated date with some score attached, and calibration of that score is unproven. The cleaner representation of missing information is <code>null</code>, not a low-confidence guess."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your schema has <code>document_type</code> as an enum of five values. New document kinds appear monthly, and ambiguous scans are common. The model forces every document into one of the five, so credit notes are labelled <code>invoice</code> and unreadable scans get a confident type. How should the enum be designed?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Replace the enum with a free-text <code>document_type</code> string so the model can name any type it encounters.",
+        "correct": false,
+        "explanation": "Free text removes the forced choice but also removes consistency: you get <code>credit note</code>, <code>Credit Note</code>, and <code>CN</code> for the same thing, and downstream routing on type becomes unreliable. Enums exist to prevent that."
+      },
+      {
+        "letter": "B",
+        "text": "Expand the enum each month as new types are discovered and re-deploy the schema so coverage keeps up with the documents.",
+        "correct": false,
+        "explanation": "Chasing new types keeps the enum accurate in hindsight, but every month's new kind is mislabelled until the update ships, and ambiguous scans still get forced into a confident value. The schema should handle the unknown by design."
+      },
+      {
+        "letter": "C",
+        "text": "Add <code>other</code> and <code>unclear</code> values to the enum, plus a <code>document_type_detail</code> string the model fills in when it chooses <code>other</code>.",
+        "correct": true,
+        "explanation": "An <code>other</code> value with a detail string keeps the category set stable and routable while still capturing new kinds accurately; <code>unclear</code> lets the model represent genuine ambiguity instead of guessing. This is the extensible-enum pattern for exactly this situation."
+      },
+      {
+        "letter": "D",
+        "text": "Add a <code>type_confidence</code> score alongside the enum and route documents below a threshold to a human for classification.",
+        "correct": false,
+        "explanation": "Confidence is useful for review routing, but it does not give the model a correct value to emit for a credit note, so the record still carries a wrong type until a human intervenes. Fixing the representation comes first."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Amounts appear in source documents as <code>1.234,56 €</code>, <code>$1,234.56</code>, <code>1234.56 USD</code>, and <code>USD 1 234,56</code>. Your tool schema has <code>amount</code> as a number and <code>currency</code> as an ISO enum, yet 6% of records have amounts off by a factor of 1,000 or the wrong currency. What should you add?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Change <code>amount</code> to a string, capture the raw text, and normalize it in application code with locale-aware parsing and a currency lookup table.",
+        "correct": false,
+        "explanation": "This moves the ambiguity to code that lacks the document's context: <code>1.234</code> is a thousand in one locale and a decimal in another, and code cannot tell which from the string alone. The model can, if told how to normalize."
+      },
+      {
+        "letter": "B",
+        "text": "Add normalization rules to the prompt: how to read thousands and decimal separators from locale cues, and how to map symbols to ISO currencies.",
+        "correct": true,
+        "explanation": "Strict schemas define the target shape but not how to get there from inconsistent sources. Format normalization instructions alongside the schema give the model the rules it needs to convert correctly, using document context that code downstream would not have. Examples or rejection alone leave the rules implicit."
+      },
+      {
+        "letter": "C",
+        "text": "Add few-shot examples showing one correctly normalized record for each of the four formats observed so far.",
+        "correct": false,
+        "explanation": "Examples help and pair well with rules, but on their own they cover only the observed formats and leave the model to infer the underlying rule. New variants such as Swiss apostrophe separators would still be guessed at."
+      },
+      {
+        "letter": "D",
+        "text": "Reject any record whose raw amount text fails a strict regex and route it to human review rather than risk a wrong number.",
+        "correct": false,
+        "explanation": "Rejection protects the database but sends 6% or more of otherwise straightforward documents to reviewers, and the regex has to encode every locale convention anyway. Teaching the model the conversion is cheaper than refusing to do it."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Extracting from research papers, the <code>methodology</code> field is required but comes back empty for 30% of documents. Inspection shows those papers describe their method in narrative prose across the introduction and results rather than in a labelled section, while the successful 70% have an explicit Methods heading. What is the most effective fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Make <code>methodology</code> non-nullable with a minimum length so the model is obliged to extract something rather than leave it empty.",
+        "correct": false,
+        "explanation": "Forcing a value when the model has not located the content invites fabrication, the opposite of the accuracy goal. The information is present in these papers; the model needs to know where to look, not to be compelled to fill a slot."
+      },
+      {
+        "letter": "B",
+        "text": "Add 2 to 4 few-shot examples showing correct methodology extraction from papers that describe methods in narrative form.",
+        "correct": true,
+        "explanation": "The failures correlate with document structure, and few-shot examples are the most effective way to demonstrate handling of structural variety. Examples of narrative-form papers teach the model to assemble methodology from prose, addressing the actual 30% pattern rather than the field definition."
+      },
+      {
+        "letter": "C",
+        "text": "Expand the field description to say that methodology may be described anywhere in the paper and should be summarized if no section exists.",
+        "correct": false,
+        "explanation": "A better description helps and is worth doing, but a sentence saying methods may appear anywhere is weaker than showing what extraction from a narrative paper looks like. Descriptions tell; examples demonstrate."
+      },
+      {
+        "letter": "D",
+        "text": "Split long papers into sections and run extraction per section, then merge whichever section produced a methodology value.",
+        "correct": false,
+        "explanation": "Chunking is a context-length tactic. These papers fit in context; the problem is recognizing method descriptions scattered through prose, which chunking makes harder by separating the pieces that need to be read together."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Developers dismiss 35% of automated review findings. You suspect a few code patterns generate most false positives but cannot tell which, because findings contain only file, line, severity, and a free-text message. What should be added so the false-positive patterns can be found and fixed systematically?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Run each review three times and post only findings that appear in at least two runs, filtering out unstable ones before developers see them.",
+        "correct": false,
+        "explanation": "Consensus filtering reduces noise but also drops real issues caught intermittently, and it still gives you no data about what the dismissed findings had in common. It hides variance instead of learning from it."
+      },
+      {
+        "letter": "B",
+        "text": "Require developers to enter a free-text reason when dismissing a finding, then read the reasons monthly to spot themes.",
+        "correct": false,
+        "explanation": "Free-text reasons are valuable qualitative signal but inconsistent and slow to analyze, and developers often leave them blank. Without a structured field on the finding side, you cannot join dismissals to the pattern that triggered them."
+      },
+      {
+        "letter": "C",
+        "text": "Lower the default severity of all findings so dismissals feel less costly while you gather informal feedback about problem areas.",
+        "correct": false,
+        "explanation": "Severity changes how findings look, not how often they are wrong. Developer trust erodes from high false-positive categories regardless of label, and you would still lack the data to identify which patterns are at fault."
+      },
+      {
+        "letter": "D",
+        "text": "Add a structured <code>detected_pattern</code> field to each finding and log dismissals with it, so dismissal rates can be analyzed per pattern.",
+        "correct": true,
+        "explanation": "Capturing structured metadata about what triggered each finding is what makes systematic analysis possible: group dismissals by pattern, find the two or three that dominate, and improve their prompts, criteria, or few-shot examples. This closes the feedback loop the free-text message cannot."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Human reviewers correct about 400 extracted fields a week, and each correction is stored as document type, field, model value, and corrected value. The team wants extraction to improve from this data rather than only fixing individual records. How should the corrections be used?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Append every correction as a few-shot example in the extraction prompt so the model has seen each mistake it previously made on these document types.",
+        "correct": false,
+        "explanation": "Hundreds of examples bloat the prompt, dilute attention, and mostly repeat the same handful of patterns. Few-shot examples work when they are few and targeted; the corrections should be analyzed to choose them, not pasted wholesale."
+      },
+      {
+        "letter": "B",
+        "text": "Cluster corrections by document type and field; for the top patterns update descriptions, normalization rules, or examples; re-evaluate on a held-out set.",
+        "correct": true,
+        "explanation": "A feedback loop turns structured error metadata into targeted changes: recurring patterns reveal which field descriptions, normalization rules, or examples need work, and a held-out evaluation confirms the change helped without regressing elsewhere. This is systematic improvement rather than record-by-record patching."
+      },
+      {
+        "letter": "C",
+        "text": "Add a second extraction pass that re-reads any field a reviewer has ever corrected on that document type, and prefer the second pass's value.",
+        "correct": false,
+        "explanation": "A second pass increases cost on the fields most likely to be wrong but shares the same prompt and therefore the same blind spots. It treats the symptom per record without changing what causes the error."
+      },
+      {
+        "letter": "D",
+        "text": "Use the corrected pairs to fine-tune a model on your document types so the corrections become part of the model's behaviour.",
+        "correct": false,
+        "explanation": "Fine-tuning is a heavy, slow lever, and the correction volume is small and pattern-concentrated. The same gains are typically available through prompt, schema, and example changes that can ship the same day and be evaluated immediately."
+      }
+    ]
+  }
+]

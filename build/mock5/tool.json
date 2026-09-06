@@ -1,0 +1,312 @@
+[
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your <code>process_refund</code> MCP tool already returns structured errors: a <code>message</code> string and a <code>reason</code> taken verbatim from the backend, such as <code>upstream unavailable</code>, <code>amount rejected</code>, or <code>not eligible</code>. Yet transcripts show the agent retrying a gift-card refusal three times, apologising to a customer for a timeout as if the refund were denied, and giving up after one failed attempt during a brief database outage. Which error shape fixes the agent's decisions?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "<code>isError: true</code>, <code>errorCategory</code>, and <code>isRetryable</code>, where validation errors are marked retryable because the agent could resubmit with a corrected amount.",
+        "correct": false,
+        "explanation": "The shape is right but the semantics invert the flag's meaning. An amount rejected against the order total will be rejected again; marking it retryable is what produced the three-attempt loop on the gift-card refusal. <code>isRetryable</code> must describe whether the same call can succeed later, not whether a different call might."
+      },
+      {
+        "letter": "B",
+        "text": "<code>isError: true</code>, <code>errorCategory</code>, <code>isRetryable</code>, a customer-safe explanation, and a suggested next action such as <code>escalate_to_human</code>.",
+        "correct": true,
+        "explanation": "Each symptom maps to a missing piece: the loop needed a truthful <code>isRetryable</code>, the wrong apology needed a category and a customer-safe explanation, and the early give-up needed to know the timeout was retryable. A suggested next action tells the agent where to go when it cannot retry. The other shapes each break one of these."
+      },
+      {
+        "letter": "C",
+        "text": "<code>errorCategory</code>, <code>isRetryable</code>, and explanation returned as a normal result with <code>isError: false</code>, since a refused refund is a business outcome rather than a tool failure.",
+        "correct": false,
+        "explanation": "Treating refusals as outcomes sounds principled, but the same shape is then used for timeouts, which are failures by any definition, and everything inspecting the MCP error flag, including hooks and telemetry, stops seeing them. Business errors are still errors to the caller; the category field is where the distinction belongs."
+      },
+      {
+        "letter": "D",
+        "text": "<code>isError: true</code>, <code>errorCategory</code>, and <code>isRetryable</code>, with the tool retrying transient faults internally for 30 seconds and returning <code>isRetryable: false</code> once exhausted.",
+        "correct": false,
+        "explanation": "Internal retry is worthwhile, but reporting an exhausted timeout as non-retryable tells the agent the outage is permanent, which is exactly the one-attempt give-up seen in the transcripts. The flag should reflect the error's nature so the agent can retry later or escalate with the right explanation."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Tool Design & MCP",
+    "prompt": "The document analysis subagent sees transient timeouts from the PDF service on about 20% of calls and permission errors on 5% of restricted documents. Every error is currently propagated straight to the coordinator, which re-plans the whole task each time, roughly doubling run time. How should errors be handled?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Have the subagent retry transient failures locally with backoff, and propagate only unresolved errors with what was attempted and partial results so far.",
+        "correct": true,
+        "explanation": "Local recovery for transient errors keeps the coordinator out of routine noise, while permission errors, which the subagent cannot fix, arrive with enough context for the coordinator to decide. This matches recoverability to the layer that can act on it."
+      },
+      {
+        "letter": "B",
+        "text": "Have the subagent retry transient failures locally and, on permission errors, skip the document and continue, reporting only the documents it analyzed successfully.",
+        "correct": false,
+        "explanation": "Local retry is right, but silently skipping restricted documents turns a failure into a success with a hole in it. The coordinator never learns that sources were unavailable and cannot seek alternatives or annotate coverage gaps."
+      },
+      {
+        "letter": "C",
+        "text": "Have the subagent retry every error up to five times with backoff before reporting, so most failures resolve without coordinator involvement.",
+        "correct": false,
+        "explanation": "Retrying permission errors wastes five attempts on a document that will never open, delaying the report the coordinator needs to seek an alternative source. Retry should be driven by whether the error is retryable, not applied uniformly."
+      },
+      {
+        "letter": "D",
+        "text": "Propagate every error to the coordinator, but as structured context with failure type, attempted document, and partial results.",
+        "correct": false,
+        "explanation": "Structured propagation is the right format for errors the subagent cannot fix. Sending transient timeouts through it still forces the coordinator to re-plan for failures a local retry would have absorbed; the doubling of run time remains."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your <code>search_patents</code> MCP tool returns <code>{\"results\": []}</code> both when a query genuinely matches nothing and when the patent API is unreachable. The coordinator cannot tell the two apart, so it sometimes reports \"no relevant patents exist\" during outages and sometimes retries queries that correctly found nothing. How should the tool respond?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Return <code>isError: true</code> in both cases with different message text, so the coordinator treats every empty outcome as something to investigate before reporting.",
+        "correct": false,
+        "explanation": "Marking a valid empty result as an error misrepresents a successful query and pushes the coordinator to retry or escalate work that is finished. Free-text differences in the message are also harder for the agent to branch on than a status field."
+      },
+      {
+        "letter": "B",
+        "text": "Return <code>results: []</code> in both cases and add a <code>source_status</code> field with <code>ok</code> or <code>unreachable</code> so the coordinator can tell them apart.",
+        "correct": false,
+        "explanation": "The information is present, but the failure is reported as a successful call, so nothing that inspects the MCP error flag, including hooks, retries, and telemetry, sees an outage. An access failure is an error and should be flagged as one."
+      },
+      {
+        "letter": "C",
+        "text": "Return <code>isError: true</code> with an access-failure category when the API is unreachable, and a success with <code>results: []</code> and a zero match count otherwise.",
+        "correct": true,
+        "explanation": "An access failure and a valid empty result are different facts and should be reported differently. The coordinator can then retry or seek alternatives on failures and confidently record a true zero, with coverage annotations in the report, on successes."
+      },
+      {
+        "letter": "D",
+        "text": "Return <code>isError: true</code> for both, with <code>isRetryable: true</code> when unreachable and <code>isRetryable: false</code> for zero matches.",
+        "correct": false,
+        "explanation": "Retryability is conveyed, but a successful query with no matches is reported as an error, so the coordinator logs a failure, may annotate the report with a false coverage gap, and cannot distinguish a real zero from a broken source in its metrics."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "You added an MCP server exposing <code>semantic_code_search</code>, which finds code by meaning using embeddings. Its description reads \"Search the codebase\". For questions like \"where do we handle retry logic?\", the agent uses the built-in <code>Grep</code> tool with guessed keywords and misses the relevant modules. What is the most effective first fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Change the description to \"Search the codebase by meaning. Use for conceptual questions about behaviour or intent.\"",
+        "correct": false,
+        "explanation": "Better than the original, but it still does not tell the model when to prefer this over <code>Grep</code>, what a good query looks like, or what comes back. Minimal descriptions leave selection between overlapping tools to guesswork."
+      },
+      {
+        "letter": "B",
+        "text": "Expand the description: it searches by concept, when to prefer it over <code>Grep</code>, the query format, example queries, and what results contain.",
+        "correct": true,
+        "explanation": "Tool descriptions are the primary input to tool selection. \"Search the codebase\" is indistinguishable from Grep to the model, so it picks the familiar tool. Explaining capability, inputs, outputs, and the boundary with Grep fixes the root cause without removing options or adding prompt rules."
+      },
+      {
+        "letter": "C",
+        "text": "Write the full description and add \"Always use this instead of Grep for any code search\" so the model stops defaulting to the built-in tool.",
+        "correct": false,
+        "explanation": "The full description is right; the override is not. Exact-match searches for an error string or function name are what <code>Grep</code> is for, and a blanket instruction degrades those. Describe the boundary rather than erasing it."
+      },
+      {
+        "letter": "D",
+        "text": "Keep the description and add few-shot examples to the system prompt showing the agent choosing <code>semantic_code_search</code> for conceptual questions.",
+        "correct": false,
+        "explanation": "Few-shot examples in the system prompt cost context in every session and only cover the cases shown. The model still selects tools from their descriptions, and \"Search the codebase\" gives it nothing to distinguish this tool from Grep; fix the description first."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Tool Design & MCP",
+    "prompt": "The document analysis agent has one tool, <code>analyze_document</code>, described as \"Analyze a document\". The coordinator uses it to extract figures, to summarize, and to verify quoted claims. Outputs vary unpredictably in shape, and the synthesis agent frequently receives a summary when it needed specific data points. What tool design change addresses this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Split into <code>extract_data_points</code>, <code>summarize_content</code>, and <code>verify_claim_against_source</code>, each with its own description and output schema.",
+        "correct": true,
+        "explanation": "One generic tool with three purposes cannot have a stable output contract, so downstream agents get whatever the model chose to produce. Purpose-specific tools with defined schemas make the coordinator's intent explicit and the outputs predictable, which is what synthesis needs."
+      },
+      {
+        "letter": "B",
+        "text": "Keep one tool but add a required <code>mode</code> enum (extract, summarize, verify) with a description of each mode and its expected output.",
+        "correct": false,
+        "explanation": "The enum makes intent explicit, which helps, but one tool still carries one description covering three purposes and one result type whose shape depends on the mode. Downstream agents must branch on which mode ran; separate tools make that contract visible."
+      },
+      {
+        "letter": "C",
+        "text": "Have the coordinator state the desired output format in every delegation prompt so the document agent knows which kind of result to return.",
+        "correct": false,
+        "explanation": "Per-prompt formatting instructions are probabilistic and put the burden on every call site to restate the contract. When the coordinator forgets or phrases it differently, output drifts again. A schema on the tool enforces the shape once."
+      },
+      {
+        "letter": "D",
+        "text": "Split into three tools with distinct names but reuse the existing description on each so the change is small and low risk.",
+        "correct": false,
+        "explanation": "Distinct names alone do not fix selection: with identical descriptions the model cannot tell which to call and misrouting continues. Names help, but the description is where purpose, inputs, and boundaries are communicated."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your repo's <code>.mcp.json</code> defines a Jira server with <code>\"env\": {\"JIRA_TOKEN\": \"${JIRA_TOKEN}\"}</code>. It works for five developers. A sixth reports that no Jira tools appear in their session, though they added <code>JIRA_TOKEN</code> to a <code>.env</code> file in the repo. What should they do first?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Copy the server block into their <code>~/.claude.json</code> at user scope so it loads independently of the project configuration that seems to be failing.",
+        "correct": false,
+        "explanation": "Duplicating the server at user scope does not change the fact that the variable is not in their environment, so the copy will fail the same way. It also creates a second definition that can drift from the team's shared one."
+      },
+      {
+        "letter": "B",
+        "text": "Move <code>JIRA_TOKEN</code> from the repo <code>.env</code> into a <code>.env</code> in their home directory, which Claude Code reads on startup.",
+        "correct": false,
+        "explanation": "Neither location is read for <code>${VAR}</code> expansion in <code>.mcp.json</code>; expansion uses the process environment. Moving the file changes nothing, and the server still fails to authenticate."
+      },
+      {
+        "letter": "C",
+        "text": "Add <code>\"env\": {\"JIRA_TOKEN\": \"${JIRA_TOKEN}\"}</code> to <code>.claude/settings.json</code> so the variable is defined for every session.",
+        "correct": false,
+        "explanation": "Settings can inject environment variables, but this entry only references a variable that is not set, so it resolves to nothing. It also commits a per-developer credential mechanism into shared settings where it does not belong."
+      },
+      {
+        "letter": "D",
+        "text": "Export <code>JIRA_TOKEN</code> in their shell, restart Claude Code, and confirm with <code>/mcp</code> that the server connected and its tools appear.",
+        "correct": true,
+        "explanation": "Variable expansion in <code>.mcp.json</code> reads the environment Claude Code was launched with, not a <code>.env</code> file in the repo. Setting the variable and verifying discovery with <code>/mcp</code> fixes the root cause and confirms it, without altering shared configuration or duplicating the server."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "Before answering questions about the data model, your agent makes 8 to 10 exploratory calls: <code>list_schemas</code>, then <code>list_tables</code> per schema, then <code>describe_table</code> for likely candidates. The catalog changes rarely. Engineers wait 30 to 40 seconds before any real work starts. How should the MCP server expose this information?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add a single <code>get_full_schema</code> tool that returns every table definition in one call so exploration collapses to one round trip.",
+        "correct": false,
+        "explanation": "One big tool call is faster than ten but it is still a model-initiated action with a large payload landing in context every session. It also models read-only reference material as an action, which is what MCP resources are meant to avoid."
+      },
+      {
+        "letter": "B",
+        "text": "Expose the schema catalog as MCP resources so the agent can see the tables and read definitions without exploratory tool calls.",
+        "correct": true,
+        "explanation": "MCP resources are designed for content catalogs: they give the agent visibility into available data up front, so it can go straight to the relevant definitions. Tools remain for actions. This removes the discovery phase rather than compressing it."
+      },
+      {
+        "letter": "C",
+        "text": "Expose the catalog through an MCP prompt template that inlines the current schema when a developer invokes it at the start of a session.",
+        "correct": false,
+        "explanation": "Prompts are user-invoked templates; they deliver the schema only when someone remembers to run them, and they push the whole catalog into context whether the question needs it or not. Resources let the agent read what is relevant on demand."
+      },
+      {
+        "letter": "D",
+        "text": "Paste the current schema into <code>CLAUDE.md</code> so it is loaded in every session and the agent has no reason to explore the database structure.",
+        "correct": false,
+        "explanation": "This works until the schema changes and someone forgets to update the file, and it loads the whole catalog into every session including ones unrelated to the database. Reference data that lives in a system should be served from that system."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your pipeline defines <code>extract_metadata</code> plus three enrichment tools that need the document type it returns. With <code>tool_choice</code> set to <code>auto</code>, the model sometimes calls an enrichment tool first using a guessed type, and 7% of documents are enriched with the wrong template. How should the tool workflow be sequenced?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Use <code>tool_choice: any</code> on the first request with all four tools available, then force the specific enrichment tool on the second request.",
+        "correct": false,
+        "explanation": "Forcing the second step does not fix the first: with <code>any</code> and all tools present, the model can still pick an enrichment tool before metadata exists. The prerequisite is what needs forcing, and the dependent step is what can be left to the model."
+      },
+      {
+        "letter": "B",
+        "text": "Force <code>extract_metadata</code> with <code>tool_choice</code> on every request in the workflow so the type is always fresh before any tool is chosen.",
+        "correct": false,
+        "explanation": "Forcing the same tool on every request means enrichment never runs: the model is compelled to call <code>extract_metadata</code> again instead of an enrichment tool. Forcing belongs on the first turn only."
+      },
+      {
+        "letter": "C",
+        "text": "Set <code>tool_choice</code> to <code>any</code> and state in the system prompt that <code>extract_metadata</code> must be called before any enrichment tool runs.",
+        "correct": false,
+        "explanation": "<code>any</code> guarantees some tool is called but not which one, so ordering still depends on the model following the prompt. The 7% failure rate is exactly what probabilistic ordering looks like. Use the forced form when a specific tool must run first."
+      },
+      {
+        "letter": "D",
+        "text": "Force <code>extract_metadata</code> via <code>tool_choice: {\"type\": \"tool\", \"name\": \"extract_metadata\"}</code> first, then use <code>auto</code> in a follow-up turn.",
+        "correct": true,
+        "explanation": "Forced tool selection guarantees the prerequisite runs first; the follow-up turn with the metadata result in context lets the model pick the right enrichment tool. This is the documented way to sequence dependent tools deterministically without merging them or relying on prompt compliance."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Documents arrive with unknown types, and you define <code>extract_invoice</code>, <code>extract_receipt</code>, and <code>extract_purchase_order</code>, each with a JSON schema. About 4% of the time the model replies with text such as \"This appears to be a receipt from...\" and no tool call, which crashes the downstream parser. How do you guarantee a structured result?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Force <code>extract_receipt</code> with a specific <code>tool_choice</code> since receipts are the most common type, and re-run with another tool if fields come back empty.",
+        "correct": false,
+        "explanation": "Forcing one tool guarantees a call but the wrong schema for a third of documents, and a retry heuristic based on empty fields is fragile. The requirement is that some extraction tool is called, with the model choosing which one; that is a different <code>tool_choice</code> setting."
+      },
+      {
+        "letter": "B",
+        "text": "Set <code>tool_choice</code> to <code>any</code> so the model must call one of the three extraction tools and cannot answer with conversational text.",
+        "correct": true,
+        "explanation": "<code>any</code> guarantees a tool invocation while leaving tool selection to the model, which is exactly right when the document type is unknown and several schemas exist. Text-only responses become impossible, so the parser always receives structured input."
+      },
+      {
+        "letter": "C",
+        "text": "Add a system prompt instruction that every response must be a tool call rather than plain text, with two examples of correct behaviour.",
+        "correct": false,
+        "explanation": "Instructions and examples reduce the text-only rate but leave it above zero, and the parser crashes on any exception. When a downstream system cannot tolerate text, the guarantee should come from the API parameter, not from prompt compliance."
+      },
+      {
+        "letter": "D",
+        "text": "Add a <code>classify_document</code> tool, force it first, then force the matching extraction tool in a second request based on its output.",
+        "correct": false,
+        "explanation": "This guarantees structure, but adds a tool, a round trip, and classification logic in your code that the model would perform anyway when choosing among the three extractors. <code>any</code> achieves the guarantee in a single call."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your CI review service calls the Messages API and posts findings as inline PR comments through a parser expecting <code>file</code>, <code>line</code>, <code>severity</code>, and <code>message</code>. The prompt asks for JSON, but 5% of responses are markdown or prose, and the job fails. Reviews must never be silently skipped. What is the most reliable fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Parse the response with a tolerant extractor that finds JSON inside markdown fences or prose, and fall back to posting the raw text as a single comment.",
+        "correct": false,
+        "explanation": "Tolerant parsing recovers some cases, but posting raw prose as a comment degrades the review into an unstructured wall of text, and edge cases keep appearing. It treats output variance as inevitable when the API can eliminate it."
+      },
+      {
+        "letter": "B",
+        "text": "Tighten the prompt with an explicit schema, an instruction to output only JSON, and a retry when parsing fails, up to three attempts.",
+        "correct": false,
+        "explanation": "Retries reduce the failure rate at the cost of latency and tokens, and a determined 5% becomes a smaller but nonzero number. When the consumer is a strict parser, prompt-based formatting is the least reliable of the available methods."
+      },
+      {
+        "letter": "C",
+        "text": "Define a <code>report_findings</code> tool whose input schema is the findings array, force it with <code>tool_choice</code>, and read the <code>tool_use</code> block.",
+        "correct": true,
+        "explanation": "Tool use with a JSON schema is the most reliable structured output method: the response is a schema-validated <code>tool_use</code> block, so syntax errors and prose disappear. Forcing the tool removes the remaining chance of a text-only reply. Semantic checks still apply, but the parser never sees markdown again."
+      },
+      {
+        "letter": "D",
+        "text": "Define a <code>report_findings</code> tool with the findings schema, leave <code>tool_choice</code> on <code>auto</code>, and instruct the model to always use the tool.",
+        "correct": false,
+        "explanation": "With <code>auto</code> the model may still answer in text, and the instruction is the same probabilistic lever that produced the 5%. Forcing the tool is what removes the text path; defining it is only half the fix."
+      }
+    ]
+  }
+]

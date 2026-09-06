@@ -1,0 +1,374 @@
+[
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your system prompt tells the agent to \"use good judgement when deciding whether a refund can be approved directly\". Audits show inconsistent outcomes: a $40 damaged-item refund with photo evidence was escalated on Monday and approved on Tuesday by the same agent build, and a $600 refund with no evidence was approved outright. Finance wants predictable behaviour without adding infrastructure. What change is most effective?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Change the instruction to \"be conservative and escalate whenever you are not highly confident the refund qualifies under policy\".",
+        "correct": false,
+        "explanation": "Confidence-based wording is another form of vague instruction; the model's confidence is poorly calibrated and the same case will still fall on different sides of the line from run to run. It also biases toward escalation, hurting first-contact resolution without making the boundary explicit."
+      },
+      {
+        "letter": "B",
+        "text": "Have the agent output a 1 to 10 confidence score with each decision and escalate automatically when the score is below 7.",
+        "correct": false,
+        "explanation": "Self-reported confidence is an unreliable proxy for whether a case actually meets policy, and the agent already approved a $600 unsupported refund, so it would likely have scored that highly. Thresholding a noisy number does not create a consistent rule."
+      },
+      {
+        "letter": "C",
+        "text": "Lower the sampling temperature for the decision turn so the agent's judgement becomes deterministic across similar refund cases.",
+        "correct": false,
+        "explanation": "Lower temperature reduces variance in wording, but the decision boundary remains undefined, so which side a case falls on is still arbitrary. Consistency in outcome comes from an explicit rule, not from making an unspecified judgement more repeatable."
+      },
+      {
+        "letter": "D",
+        "text": "Replace it with explicit criteria: auto-approve under $100 with photo evidence within 30 days; escalate above $500 or without evidence.",
+        "correct": true,
+        "explanation": "Vague instructions like \"use good judgement\" leave the boundary to the model, which is why identical cases diverge. Specific categorical criteria define exactly which situations resolve and which escalate, giving Finance the predictability they need through the prompt alone. Guidance phrased as confidence or conservatism does not have the same effect."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Code Generation with Claude Code",
+    "domain": "Prompt & Structured Output",
+    "prompt": "You want Claude Code to flag N+1 query patterns during refactoring. With a rule-based prompt listing known shapes, it flags every loop containing a database call, including loops that operate on an already-batched query result, and misses N+1 patterns expressed through lazy-loading accessors it has not seen listed. Developers are ignoring the warnings. Which prompting approach best addresses both the false positives and the missed variants?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add 2 to 4 few-shot examples contrasting a genuine N+1 with an acceptable batched loop, each explaining what distinguishes them.",
+        "correct": true,
+        "explanation": "Few-shot examples that pair a real issue with a superficially similar acceptable pattern, and explain why they differ, teach the model the judgement rather than the surface shape. That judgement generalises to lazy-loading variants no list anticipated, and it stops flagging loops over already-batched data. Rules match shapes; examples convey reasoning."
+      },
+      {
+        "letter": "B",
+        "text": "Extend the rule list to include every known N+1 shape, including lazy-loading accessors, and add explicit exceptions for batched results.",
+        "correct": false,
+        "explanation": "A longer list catches the variants you have already seen and no others, and the exception clauses grow with each false positive. The model is being asked to pattern-match rather than reason, which is the source of both problems."
+      },
+      {
+        "letter": "C",
+        "text": "Instruct the model to report N+1 findings only when it is highly confident, to suppress the batched-loop false positives.",
+        "correct": false,
+        "explanation": "Confidence wording rarely improves precision because the model is not well calibrated about which loops are genuinely problematic. It may also suppress the true positives on unfamiliar variants, worsening recall while leaving the underlying confusion in place."
+      },
+      {
+        "letter": "D",
+        "text": "Remove the N+1 check from the prompt and rely on the ORM's query logging in tests to catch the pattern at runtime.",
+        "correct": false,
+        "explanation": "Runtime detection is a useful safety net but only fires for code paths the tests exercise, and it moves feedback from refactoring time to test time. Dropping the check abandons the goal instead of improving the prompt that implements it."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Developers complain that 40% of your automated review findings are noise. You added \"only report issues you are highly confident about\" to the prompt; two weeks later the false positive rate is unchanged and a few real bugs were dropped. The prompt still describes the review goal as \"identify problems with the code\". What change is most likely to improve precision?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Strengthen the wording to \"report only issues you are certain are bugs\" and cap the review at five findings per pull request.",
+        "correct": false,
+        "explanation": "Escalating the confidence language repeats the change that just failed, and a finding cap drops real issues on large PRs while doing nothing for precision on small ones. Neither tells the model what to report."
+      },
+      {
+        "letter": "B",
+        "text": "Ask the model to attach a numeric confidence to each finding and have the pipeline discard anything below 0.8 before posting comments.",
+        "correct": false,
+        "explanation": "Numeric self-reported confidence is poorly calibrated, so a threshold removes a roughly random slice of findings, including real bugs, while retaining confidently wrong ones. Filtering on a noisy score does not fix a review that lacks defined criteria."
+      },
+      {
+        "letter": "C",
+        "text": "Replace \"identify problems\" with specific criteria: report bugs, security flaws, and data-loss risks; skip style, naming, and existing repository patterns.",
+        "correct": true,
+        "explanation": "General instructions such as \"be conservative\" or \"only high confidence\" do not improve precision because they leave the category boundaries undefined. Explicit criteria for what to report and what to skip give the model a decision rule it can apply consistently, which is what removes the noise without dropping real bugs."
+      },
+      {
+        "letter": "D",
+        "text": "Run the review twice with different sampling seeds and post only the findings that appear in both runs, treating agreement as a precision filter.",
+        "correct": false,
+        "explanation": "Agreement between two runs of the same underspecified prompt confirms consistent misjudgements as readily as real bugs, and doubles cost. Consensus reduces variance, not the systematic false positives that come from unclear criteria."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your review bot emits structured findings with file, line, severity, and message. Developers dismiss roughly 35% of findings, but you cannot tell which kinds of code trigger the dismissed ones, because dismissal only records the finding ID. You want to systematically improve the prompt based on real dismissal data. What should you add?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "A required free-text dismissal reason that developers must enter before a finding can be closed, so patterns can be read from the reasons.",
+        "correct": false,
+        "explanation": "Mandatory reasons produce terse, inconsistent text under time pressure and add friction that developers resent. The aggregation you need is by code construct, which the model can record at detection time far more consistently than humans can after the fact."
+      },
+      {
+        "letter": "B",
+        "text": "A <code>detected_pattern</code> field in each finding naming the code construct that triggered it, so dismissals can be grouped by pattern.",
+        "correct": true,
+        "explanation": "Recording which construct produced each finding turns dismissal logs into a dataset: group by <code>detected_pattern</code>, and the high-dismissal patterns show exactly where the prompt over-flags. That enables targeted few-shot examples or criteria changes for those patterns rather than guesswork. It costs one field and no developer effort."
+      },
+      {
+        "letter": "C",
+        "text": "A weekly A/B test that runs two prompt variants on the same pull requests and keeps the one with the lower dismissal rate.",
+        "correct": false,
+        "explanation": "A/B testing measures whether a change helped but gives no insight into what to change; without knowing which patterns are being dismissed, the variants are guesses. Diagnostic data has to come first."
+      },
+      {
+        "letter": "D",
+        "text": "Fewer finding categories, merging the noisiest ones into a single \"maintainability\" bucket to simplify the analysis.",
+        "correct": false,
+        "explanation": "Coarser categories hide the very distinctions you need to see, and you do not yet know which categories are noisiest, which is the question you are trying to answer. Reducing resolution before measuring is the wrong order."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Prompt & Structured Output",
+    "prompt": "You are launching a weekly whole-codebase audit over 2,000 files using the Message Batches API. On the first run 30% of results were unusable because the prompt produced inconsistent formats, so you fixed the prompt and resubmitted all 2,000 files, twice, each cycle taking up to a day. Leadership is questioning the cost and the delay. What process change prevents this next time?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Refine the prompt synchronously on a representative sample of files until output is consistent, then submit the full batch.",
+        "correct": true,
+        "explanation": "Batch processing has a long turnaround and no latency guarantee, so each iteration on the prompt is expensive in time and money. Refining on a small sample with synchronous calls gives fast feedback and maximises first-pass success, so the 2,000-file batch is submitted once with a prompt already known to work."
+      },
+      {
+        "letter": "B",
+        "text": "Split the audit into four batches of 500 files so a formatting problem is discovered after the first batch rather than the whole run.",
+        "correct": false,
+        "explanation": "Smaller batches limit the blast radius but still discover problems only after a full batch turnaround, and the fix is applied to later batches while the first still needs resubmission. Fast iteration needs the synchronous API on a sample, not smaller slow batches."
+      },
+      {
+        "letter": "C",
+        "text": "Switch the audit to synchronous API calls so malformed results can be retried immediately as they occur.",
+        "correct": false,
+        "explanation": "The audit is latency-tolerant weekly work, which is exactly where the batch discount belongs. Abandoning it doubles the recurring cost to solve a problem that only exists because the prompt was not validated before the first submission."
+      },
+      {
+        "letter": "D",
+        "text": "Enforce the output format with a JSON schema via tool use so that inconsistent formatting can no longer occur in batch results.",
+        "correct": false,
+        "explanation": "Schema enforcement is a good addition and removes syntax-level variation, but it does not protect against semantic or content problems in an untested prompt, which would again surface only after a day-long batch. Validating on a sample first is the process fix regardless of output mechanism."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your CI review bot calls the Messages API directly and asks in the prompt for \"a JSON array of findings with file, line, severity, and message\". About 6% of responses fail to parse: trailing commentary before the array, a code fence around it, or a missing closing bracket on long reviews. You have added retries, which doubles cost on those runs. What is the most reliable fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Post-process the response with a lenient parser that strips fences and commentary and repairs unbalanced brackets before parsing.",
+        "correct": false,
+        "explanation": "Repair heuristics handle the failure modes seen so far and break on the next one, and a bracket repair can silently produce a valid array with a truncated finding. Cleaning up free text is a workaround for not having asked for structured output in the first place."
+      },
+      {
+        "letter": "B",
+        "text": "Add explicit instructions: \"Output only the JSON array, no prose, no code fences\", and provide one example of a valid response.",
+        "correct": false,
+        "explanation": "Formatting instructions and an example reduce the failure rate but leave it non-zero, because the model is still generating free text that happens to look like JSON. For a pipeline component, a mechanism that guarantees the structure is available and preferable."
+      },
+      {
+        "letter": "C",
+        "text": "Increase <code>max_tokens</code> so long reviews are not truncated before the closing bracket, and keep the existing retry logic for the remaining cases.",
+        "correct": false,
+        "explanation": "Raising the token limit addresses only the truncation case and leaves commentary and fences unresolved, so retries continue. It treats one symptom of unstructured output rather than moving to structured output."
+      },
+      {
+        "letter": "D",
+        "text": "Define a <code>report_findings</code> tool whose input schema is the findings array, force it with <code>tool_choice</code>, and read findings from the call.",
+        "correct": true,
+        "explanation": "Tool use with a JSON schema is the reliable way to obtain schema-compliant structured output: the findings arrive as a validated tool input, so fences, commentary, and unbalanced brackets cannot occur. Forcing the tool guarantees every response is a call rather than prose, which removes the retry cost entirely."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Claude Code for Continuous Integration",
+    "domain": "Prompt & Structured Output",
+    "prompt": "After moving your review bot to tool use with a strict JSON schema, parse failures dropped to zero. But developers now report findings whose <code>line</code> points to a blank line or a different function than the message describes, and a few marked <code>critical</code> whose text describes a naming nit. The schema validates every one of these responses. What does this tell you, and what should you do?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "The schema is too permissive; tighten it with stricter types and enum constraints so mislocated or mis-rated findings are rejected at validation time.",
+        "correct": false,
+        "explanation": "The values are already the right types and valid enum members; a wrong line number is still an integer and \"critical\" is a legal severity. No schema constraint can know whether a line matches the message. Tightening syntax cannot catch semantic errors."
+      },
+      {
+        "letter": "B",
+        "text": "Tool use is unsuitable for review output; revert to free-text findings so the model can explain locations and severities in context.",
+        "correct": false,
+        "explanation": "Reverting reintroduces the parse failures you just eliminated and does nothing to make line numbers or severities more accurate. Structured output remains the right transport; what is missing is validation of meaning on top of it."
+      },
+      {
+        "letter": "C",
+        "text": "The bot needs more <code>max_tokens</code>; truncated reasoning is causing it to guess line numbers and severities near the end of long reviews.",
+        "correct": false,
+        "explanation": "Token limits would produce cut-off tool calls, which strict schema validation would reject, not well-formed findings with wrong values. The errors described are content mistakes, not truncation artefacts."
+      },
+      {
+        "letter": "D",
+        "text": "Strict schemas remove syntax errors, not semantic ones; add checks that the line exists and matches the described code, and retry with the specific error.",
+        "correct": true,
+        "explanation": "Schema-enforced tool use guarantees shape, not truth. Semantic validation, for example confirming the referenced line contains the construct the message names and that severity matches defined criteria, catches these cases, and feeding the specific validation error back on retry lets the model correct them. This is the standard layering: schema for syntax, checks for meaning."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your invoice extraction tool marks <code>po_number</code> as required. About 30% of supplier invoices have no purchase order, and for those the model returns values like <code>PO-0000</code>, <code>N/A</code>, or a number copied from the invoice ID field. Downstream matching then fails or, worse, matches the wrong order. The prompt already says \"do not invent values\". What schema change addresses the root cause?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Make <code>po_number</code> optional and nullable so the model can return <code>null</code> when the document contains no purchase order reference.",
+        "correct": true,
+        "explanation": "A required field forces the model to supply something even when the source has nothing, and instructions not to invent cannot override a schema that demands a value. Allowing <code>null</code> gives the model a truthful option, which removes the fabricated placeholders and lets downstream code treat absence explicitly."
+      },
+      {
+        "letter": "B",
+        "text": "Keep the field required and add a regex pattern for valid purchase order formats so fabricated values fail validation and trigger a retry.",
+        "correct": false,
+        "explanation": "A pattern rejects <code>N/A</code> but not a plausibly formatted invented number, and the retry asks the model to satisfy the same impossible requirement again. The information is absent from the document, so retries cannot produce it."
+      },
+      {
+        "letter": "C",
+        "text": "Keep the field required and strengthen the prompt with few-shot examples of invoices without purchase orders and the expected placeholder text.",
+        "correct": false,
+        "explanation": "Teaching a consistent placeholder still encodes absence as a string that downstream systems must special-case, and the schema continues to force a value. The cleaner contract is a nullable field, not an agreed sentinel."
+      },
+      {
+        "letter": "D",
+        "text": "Add a boolean <code>has_po_number</code> field alongside the required <code>po_number</code> so downstream systems can tell real values from placeholders.",
+        "correct": false,
+        "explanation": "A flag paired with a still-required field means the model must invent a value and then admit it is invented, which is convoluted and error-prone. Making the field nullable expresses the same information in one place without any fabricated content."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your document classification schema has an enum <code>document_type</code> with five values: invoice, receipt, purchase_order, credit_note, statement. New suppliers now send delivery notes and remittance advices, which the model forces into <code>receipt</code> or <code>statement</code> with high confidence. Adding an enum value requires a schema release, and new types keep appearing. How should the schema evolve?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Replace the enum with a free-text <code>document_type</code> string so the model can name any document type it encounters.",
+        "correct": false,
+        "explanation": "Free text loses the consistency an enum provides for the common types: the same document may be labelled \"invoice\", \"Invoice\", or \"tax invoice\" across runs, breaking downstream routing. The known categories should stay constrained."
+      },
+      {
+        "letter": "B",
+        "text": "Add each newly observed type to the enum as it appears, keeping the field strictly categorical and releasing schema updates as needed.",
+        "correct": false,
+        "explanation": "Chasing new types with schema releases means every unseen document is misclassified until the next release, which is the current problem. An extensible pattern removes the release dependency for the long tail while keeping the head categorical."
+      },
+      {
+        "letter": "C",
+        "text": "Remove <code>document_type</code> from the schema and infer the type downstream from which fields were populated.",
+        "correct": false,
+        "explanation": "Inferring type from populated fields is brittle, since delivery notes and receipts share many fields, and it discards a judgement the model makes reliably for known types. The field is valuable; it just needs an escape hatch."
+      },
+      {
+        "letter": "D",
+        "text": "Add an <code>other</code> enum value plus a <code>document_type_detail</code> string the model fills in when it selects <code>other</code>.",
+        "correct": true,
+        "explanation": "The \"other\" plus detail pattern keeps the known categories strictly enumerated while giving the model a truthful option for anything new, with the detail string recording what it actually saw. Delivery notes stop being forced into wrong buckets, and the detail values show which types deserve promotion to the enum later."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your validation-retry loop resends the document, the failed extraction, and the validation error up to three times. Metrics show retries fix 80% of format errors such as dates in the wrong format, but for <code>contract_end_date</code> the retry success rate is 2%. Inspection shows those contracts say \"term as defined in Addendum B\", and the addendum is a separate file not supplied. How should the loop handle this field?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Increase the retry limit to five for date fields, since dates are the category with the most formatting variety across supplier contracts and templates.",
+        "correct": false,
+        "explanation": "The 2% success rate is not a formatting problem; the value is not in the document. More retries repeat an impossible request at increasing cost and delay, and any success is likely a fabricated date rather than a recovered one."
+      },
+      {
+        "letter": "B",
+        "text": "Add few-shot examples showing how to locate end dates in contracts with unusual term clauses, renewal language, or non-standard layouts.",
+        "correct": false,
+        "explanation": "Examples help when the information is present but presented unusually. Here the clause explicitly points to another document, so no example of in-document extraction applies. The fix must recognise absence, not improve search."
+      },
+      {
+        "letter": "C",
+        "text": "Detect when the source refers to an external document, skip retries, mark the field unavailable, and flag the case to fetch the addendum.",
+        "correct": true,
+        "explanation": "Retries work for format and structural errors and fail when the information is simply absent from the source. Recognising the referral to Addendum B, stopping the loop, and surfacing a specific reason lets the pipeline route the case to the step that can actually resolve it, obtaining the missing file, instead of burning retries."
+      },
+      {
+        "letter": "D",
+        "text": "Make <code>contract_end_date</code> a required field with a strict date pattern so the model is compelled to locate and return a value.",
+        "correct": false,
+        "explanation": "Compelling a value the document does not contain produces fabrication, which is worse than an honest null for a contractual date. Required fields are appropriate only when the information is reliably present in the source."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "In 4% of invoice extractions, the sum of extracted line item amounts does not equal the extracted total. You cannot tell whether the model misread a line item, the supplier's document itself contains an arithmetic error, or a discount line was omitted. Rejecting these outright would block legitimate invoices with genuine supplier mistakes. How should you design the extraction to make these cases diagnosable?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Trust the stated total, drop the line items from the schema, and let downstream systems recompute detail only when a reconciliation needs it.",
+        "correct": false,
+        "explanation": "Removing line items hides the discrepancy rather than explaining it, and you lose the detail needed for matching and audit. The 4% would pass silently, including cases where the model misread the total itself."
+      },
+      {
+        "letter": "B",
+        "text": "Reject any extraction where the items do not sum to the total and retry with the validation error attached until the figures agree.",
+        "correct": false,
+        "explanation": "When the supplier's document genuinely does not add up, retrying pressures the model to alter a correctly extracted value until the numbers agree, converting a source error into a silent extraction error. Retries are for the model's mistakes, not the document's."
+      },
+      {
+        "letter": "C",
+        "text": "Have the model output <code>stated_total</code> as written, a computed <code>calculated_total</code>, and a <code>conflict_detected</code> flag explaining any mismatch.",
+        "correct": true,
+        "explanation": "Extracting both the total as printed and the model's own sum of the items, plus an explicit conflict indicator, makes the discrepancy visible and attributable: a note such as \"discount line not itemised\" or \"document arithmetic error\" tells reviewers what happened. Legitimate invoices with supplier mistakes flow through flagged rather than blocked."
+      },
+      {
+        "letter": "D",
+        "text": "Recompute the total from line items downstream and overwrite the extracted total whenever the two disagree.",
+        "correct": false,
+        "explanation": "Silently replacing the stated total assumes the line items are the correct side of the disagreement, which fails whenever a line was misread or omitted. It also erases evidence of supplier errors that accounts payable needs to see."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Prompt & Structured Output",
+    "prompt": "Your research-paper extraction returns <code>null</code> for the <code>authors</code> and <code>cited_works</code> fields on about a quarter of documents. Those papers use inline author-year citations and list references in a different layout from the numbered bibliographies your prompt describes. The information is present in every affected document. Which change most directly fixes the empty fields?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add few-shot examples showing correct extraction from both numbered-bibliography and inline-citation papers with their reference layouts.",
+        "correct": true,
+        "explanation": "The information exists but is presented in a structure the prompt's description does not cover, and few-shot examples are the most effective way to demonstrate handling of varied document structures. Showing extraction from both layouts teaches the model to recognise references however they appear, which directly addresses the empty required fields."
+      },
+      {
+        "letter": "B",
+        "text": "Make <code>authors</code> and <code>cited_works</code> required in the schema so the model cannot return <code>null</code> and must locate them.",
+        "correct": false,
+        "explanation": "Forcing a value when the model has not recognised the reference layout invites fabricated author lists, which is worse than a null. Required fields should reflect that the model can reliably find the data, and the prompt has not yet shown it how."
+      },
+      {
+        "letter": "C",
+        "text": "Run a classifier first to detect the citation style and route each paper to a separate style-specific extraction prompt.",
+        "correct": false,
+        "explanation": "Two prompts and a classifier work but add a routing step, a second prompt to maintain, and a new failure mode when the classifier is wrong. A single prompt with examples of both layouts handles the variety without the extra machinery."
+      },
+      {
+        "letter": "D",
+        "text": "Raise the sampling temperature so the model explores alternative interpretations of the reference sections instead of returning nothing.",
+        "correct": false,
+        "explanation": "Temperature affects randomness, not recognition of document structure, and higher randomness in an extraction task increases errors on the papers that currently work. The model needs to be shown the layout, not encouraged to guess."
+      }
+    ]
+  }
+]

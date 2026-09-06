@@ -1,0 +1,281 @@
+[
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Tool Design & MCP",
+    "prompt": "You connect your CRM vendor's MCP server so the agent can use <code>get_customer</code> and <code>lookup_order</code>. The same server also exposes 31 other tools, including <code>delete_customer</code>, <code>issue_store_credit</code>, and <code>merge_accounts</code>. In staging, the agent issued store credit twice after a refund was declined, and per-request input tokens rose 40% from tool definitions alone. Which change addresses both problems?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add a system prompt section listing the CRM tools the agent may call and reserving credit, merge, and delete operations for human staff.",
+        "correct": false,
+        "explanation": "A prompt rule is soft guidance, and the store-credit incident shows the model will reach for a visible tool when it looks helpful. It also leaves all 31 extra definitions in every request, so the 40% token increase stays exactly where it is."
+      },
+      {
+        "letter": "B",
+        "text": "Restrict the agent's <code>allowedTools</code> to the four support tools so the other 31 CRM tools are never presented to the model at all.",
+        "correct": true,
+        "explanation": "Filtering with <code>allowedTools</code> removes the extra tools from what the model sees, so their definitions are not sent (cutting the token overhead) and misuse becomes impossible rather than discouraged. It is one configuration line with nothing new to maintain, unlike a hook or a proxy server."
+      },
+      {
+        "letter": "C",
+        "text": "Add a <code>PreToolUse</code> hook that denies any CRM tool outside the four support tools and returns a reason the agent can read.",
+        "correct": false,
+        "explanation": "A <code>PreToolUse</code> hook stops the store-credit call at execution time, but the 31 definitions are still in context on every turn, so cost is unchanged, and the agent burns turns attempting and being denied. Hooks fit policy checks on tools the agent should have, not tools it should never see."
+      },
+      {
+        "letter": "D",
+        "text": "Wrap the CRM server in your own MCP server that forwards only the four support tools and rejects everything else with an error result.",
+        "correct": false,
+        "explanation": "A forwarding proxy achieves the filtering, but you now own a server that must track every upstream schema change and adds a hop to each call. The SDK already provides tool filtering through configuration, so the proxy is extra surface for the same outcome."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your backend team ships one <code>manage_order</code> MCP tool with an <code>action</code> enum (<code>cancel</code>, <code>change_address</code>, <code>reship</code>, <code>refund</code>) and a loose <code>params</code> object. Traces show the agent picks <code>reship</code> for refund requests about 9% of the time, sends address fields on refund calls, and your refund-cap <code>PreToolUse</code> hook cannot tell refunds from cancellations without parsing <code>params</code>. What is the best redesign?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Keep <code>manage_order</code> and expand its description with a per-action guide explaining when each action applies and which <code>params</code> keys it requires.",
+        "correct": false,
+        "explanation": "A longer description keeps four distinct operations behind one decision point, so the model still weighs all actions on every call and the description grows with each new action. The refund-cap hook also still has to parse <code>params</code> because the tool name carries no signal."
+      },
+      {
+        "letter": "B",
+        "text": "Keep <code>manage_order</code> but make <code>params</code> a discriminated union in the JSON schema so each action only accepts its own fields.",
+        "correct": false,
+        "explanation": "A discriminated union fixes address fields leaking into refund calls, but the 9% <code>reship</code>-for-refund selection error is untouched, and the hook must still inspect the payload. Nested conditional schemas are also harder for the model to fill correctly than flat ones."
+      },
+      {
+        "letter": "C",
+        "text": "Add few-shot examples to the system prompt showing correct <code>action</code> and <code>params</code> choices for refunds, cancellations, and reshipments.",
+        "correct": false,
+        "explanation": "Examples may reduce mis-selection, but they cost tokens on every turn and do nothing for enforcement: a permission hook keyed on tool name still cannot distinguish a refund from a cancellation. The root issue is the tool's shape, and examples work around it rather than fixing it."
+      },
+      {
+        "letter": "D",
+        "text": "Split it into <code>cancel_order</code>, <code>update_shipping_address</code>, <code>reship_order</code>, and <code>process_refund</code>, each with its own schema and description.",
+        "correct": true,
+        "explanation": "Separate tools give each operation a focused description, which is what drives selection, and a schema that only carries relevant fields, which removes the stray address data. It also makes <code>process_refund</code> addressable by name, so the refund-cap hook and permission rules match it directly."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Tool Design & MCP",
+    "prompt": "<code>lookup_order</code> returns <code>refund_eligible: false</code> as a single boolean per order. Transcripts show the agent then either tells the customer the order is not eligible with no reason, or escalates. Reviewers found that in 60% of these cases only one final-sale accessory was ineligible while the rest of the order could still be refunded, which the agent never offers. Which tool change most improves first-contact resolution?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Return eligibility per line item with a reason code and window end date, such as <code>{item_id, refund_eligible, reason: 'final_sale', window_ends}</code>.",
+        "correct": true,
+        "explanation": "The backend already knows why each item is or is not eligible; surfacing that per line item lets the agent offer the partial refund and explain the final-sale exclusion in one turn. Returning decision-relevant structure beats making the model infer policy or adding another round trip."
+      },
+      {
+        "letter": "B",
+        "text": "Add the return-window and final-sale policy rules to the system prompt so the agent can work out eligibility itself from the order's dates and categories.",
+        "correct": false,
+        "explanation": "Moving policy evaluation into the prompt duplicates backend logic in a place that drifts and makes the model do date arithmetic it gets wrong at the margins. It also assumes the order payload exposes item categories, which the bare boolean design gives no evidence of."
+      },
+      {
+        "letter": "C",
+        "text": "Add a separate <code>check_refund_eligibility</code> tool that takes an order ID and returns the same boolean along with a customer-facing explanation string.",
+        "correct": false,
+        "explanation": "A second tool adds a round trip yet still answers at order level, so the partially refundable case stays invisible. A prewritten explanation string also locks the agent into fixed wording instead of giving it structured facts to act on."
+      },
+      {
+        "letter": "D",
+        "text": "Change the tool to return <code>is_error: true</code> with the ineligibility reason so the agent treats it as a blocked action and explains it to the customer.",
+        "correct": false,
+        "explanation": "An ineligible order is a successful lookup, not a tool failure; flagging it as an error teaches the agent that <code>lookup_order</code> breaks on certain orders. It also still reports one verdict per order, so the refundable items are never surfaced."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Tool Design & MCP",
+    "prompt": "<code>process_refund</code> calls occasionally time out at the payment gateway after the refund has actually been captured. The tool already returns a distinct <code>timeout</code> error code that tells the agent the call may be retried, so the agent retries, and finance reports 14 duplicate refunds last month. What tool-level change prevents duplicates without giving up retries?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Instruct the agent in the tool description to call <code>lookup_order</code> after any timeout and retry only if the refund does not yet appear on the order.",
+        "correct": false,
+        "explanation": "This depends on the model following a two-step procedure every time and on the gateway's capture being visible on the order before the retry. With eventual consistency the check races the capture, so some duplicates survive, and the guard lives in prose rather than in code."
+      },
+      {
+        "letter": "B",
+        "text": "Change the timeout to a permanent failure so the agent escalates instead of retrying, and let finance reconcile gateway-captured refunds by hand.",
+        "correct": false,
+        "explanation": "Reclassifying a transient failure as permanent trades first-contact resolution for a manual queue, and it discards the distinct error code you already built. Timeouts are exactly the case retries exist for; the fix is to make the retry safe, not to forbid it."
+      },
+      {
+        "letter": "C",
+        "text": "Make <code>process_refund</code> idempotent server-side: key on order, line item, and amount, and return the stored result when a matching refund already exists.",
+        "correct": true,
+        "explanation": "Server-side idempotency makes the retry harmless regardless of what the model does: the repeated call returns the original outcome instead of capturing again. The server is the one component that knows whether the first refund landed, so enforcing uniqueness there needs no model cooperation."
+      },
+      {
+        "letter": "D",
+        "text": "Add a <code>PreToolUse</code> hook that blocks a second <code>process_refund</code> call for the same order within five minutes of the first attempt.",
+        "correct": false,
+        "explanation": "A time window on order ID blocks legitimate refunds for a different item on the same order and still permits a duplicate after five minutes or from a resumed session. The hook is guessing at state the payment server actually holds."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "Engineers debug legacy services from Claude Code with an internal MCP tool <code>query_logs(service, query)</code>. For busy services it returns 30,000+ log lines in one result; Claude Code then reports the MCP output exceeded its limit and the agent loses the data, or the context fills after two queries and compaction drops the details being investigated. What is the right fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Raise <code>MAX_MCP_OUTPUT_TOKENS</code> in the shared settings so the full result fits, and rely on context compaction to recover space afterwards.",
+        "correct": false,
+        "explanation": "Raising the ceiling admits 30,000 lines the model cannot usefully read, multiplies cost and latency per query, and the stem already shows compaction discarding the details engineers need. The limit is a symptom guard; the tool's output shape is the problem."
+      },
+      {
+        "letter": "B",
+        "text": "Add a <code>CLAUDE.md</code> rule telling Claude to narrow log queries with time ranges and to stop after two <code>query_logs</code> calls per investigation.",
+        "correct": false,
+        "explanation": "The tool has no time-range parameter, so the instruction asks for something the interface cannot express, and a two-call budget cripples investigations that need to drill down. Soft rules cannot fix a tool that returns unbounded data."
+      },
+      {
+        "letter": "C",
+        "text": "Replace the MCP tool with <code>Bash</code> access to a log export directory so Claude can filter with <code>grep</code> and <code>head</code> as it does for repository files.",
+        "correct": false,
+        "explanation": "Exports are stale copies of a live logging service, Bash output is truncated as well, and structured querying by service and field is lost. It swaps one oversized result for another while removing the backend integration that made the tool valuable."
+      },
+      {
+        "letter": "D",
+        "text": "Add <code>since</code>, <code>level</code>, and <code>limit</code> parameters with sane defaults, return a capped page plus a <code>next_cursor</code>, and include the total count.",
+        "correct": true,
+        "explanation": "Shaping the tool around what the model can consume keeps every result inside context, and the cursor lets the agent page deeper only when needed. Defaults protect engineers who omit filters, and the total count tells the agent when to narrow rather than paginate."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your productivity tool is a desktop app built on the Agent SDK. You want Claude to have a <code>get_open_editors</code> tool that returns the files and unsaved buffer contents open in the app, and an <code>apply_patch_preview</code> tool that renders a diff in the app's UI before anything is written. Both need the app's in-memory state and its authenticated user session. How should these tools be provided?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Define them with the SDK's <code>tool()</code> helper and <code>createSdkMcpServer</code> so they run in-process and read the app's state directly.",
+        "correct": true,
+        "explanation": "An in-process SDK MCP server runs inside the application, so the tools read live buffers and reuse the existing session with no transport, serialization, or auth layer. This is the case the SDK's custom-tool support is designed for, and it keeps the UI preview in the same process that owns the UI."
+      },
+      {
+        "letter": "B",
+        "text": "Package them as a standalone stdio MCP server the app launches as a child process, passing the buffer contents and session token as launch arguments.",
+        "correct": false,
+        "explanation": "A child process cannot see the app's memory, so buffer contents frozen into launch arguments go stale the moment the user types. The token also lands in the process list, and the preview tool has no way to draw in the parent's UI."
+      },
+      {
+        "letter": "C",
+        "text": "Expose them as an HTTP MCP server inside the app and register it in the session's <code>mcpServers</code> config with the localhost URL and a bearer token.",
+        "correct": false,
+        "explanation": "This works, but for code in the same process it adds a listening port, a token, and JSON serialization of every buffer for no gain. Remote transports are for tools that live elsewhere; here they only add attack surface and moving parts."
+      },
+      {
+        "letter": "D",
+        "text": "Skip custom tools: have the app write open buffers to a temp directory and let Claude use the built-in <code>Read</code> and <code>Edit</code> tools on those files.",
+        "correct": false,
+        "explanation": "Temp copies drift from unsaved buffers, and <code>Edit</code> writes straight to disk, which bypasses the preview requirement entirely. Reusing built-ins is attractive, but these tools exist precisely because the data and the UI live inside the app."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "You built a <code>run_tests</code> MCP tool for a legacy monorepo. It shells out to the test runner and raises an exception whenever the exit code is non-zero, so the SDK delivers a tool error with a truncated stack trace. When 3 of 410 tests fail, traces show Claude re-running the full suite up to three times, then concluding the test tool is broken and asking the engineer to run tests manually. What should change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Catch the exception and return the runner's full stdout and stderr as the text result so Claude can read the failures the way it would in a terminal.",
+        "correct": false,
+        "explanation": "Dropping the exception is an improvement, but 410 tests of raw output is large enough to be truncated, and the three failures may sit in the cut portion. The model wants to know which tests failed and why; raw terminal text makes it dig for that."
+      },
+      {
+        "letter": "B",
+        "text": "Return a normal result with <code>passed</code>, <code>failed</code>, and a list of failing test names with messages; reserve error results for the runner failing to start.",
+        "correct": true,
+        "explanation": "Failing tests are the tool doing its job successfully, so they belong in an ordinary result; an error result should mean the tool itself could not run. A compact structured summary gives Claude exactly what it needs to fix the code instead of re-running or giving up."
+      },
+      {
+        "letter": "C",
+        "text": "Keep the error result but add retry logic inside the tool so transient flakiness is absorbed before any failure is reported back to Claude.",
+        "correct": false,
+        "explanation": "Internal retries make every genuine failure slower and can mask flaky tests the engineer should know about. The result is still delivered as an error, so Claude keeps reading a red suite as a broken tool."
+      },
+      {
+        "letter": "D",
+        "text": "Add a system prompt note that a <code>run_tests</code> error means tests failed and Claude should inspect the trace instead of re-running the suite.",
+        "correct": false,
+        "explanation": "The trace is truncated, so even a model that follows the note cannot see which tests failed. The instruction papers over an interface that misreports a normal outcome as a failure; fixing the tool's contract removes the need for the note."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your invoice extractor uses a client tool <code>record_invoice</code> with a JSON schema. Across 50,000 documents last week, 0.4% of tool inputs failed schema validation: <code>total_amount</code> arrived as the string <code>'1,240.00'</code>, an unexpected <code>notes</code> key appeared, and <code>currency</code> held <code>'Euro'</code> instead of the enum value <code>EUR</code>. Each failure costs a retry round trip. What most directly eliminates these failures?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add three few-shot examples to the system prompt showing a correctly typed <code>total_amount</code>, no extra keys, and an enum-valued <code>currency</code>.",
+        "correct": false,
+        "explanation": "Examples lower the rate but cannot guarantee conformance, so at 50,000 documents a residual fraction still retries, and every document pays for the extra prompt tokens. The failures are structural, and the API offers a structural guarantee for exactly this."
+      },
+      {
+        "letter": "B",
+        "text": "Add a coercion layer before validation that strips commas from numbers, drops unknown keys, and maps common currency names to ISO codes.",
+        "correct": false,
+        "explanation": "Coercion hides output problems instead of preventing them: stripping commas from '1.240,00' in a European invoice silently yields the wrong number, and dropping keys discards whatever the model tried to say. Repairing outputs is a fallback, not the primary control."
+      },
+      {
+        "letter": "C",
+        "text": "Set <code>strict: true</code> on the tool definition so the input is constrained to the schema, and confirm the schema uses only supported keywords.",
+        "correct": true,
+        "explanation": "Strict tool use constrains generation to the schema, so types, required keys, enum values, and the absence of extra properties are guaranteed rather than encouraged, which removes the retry loop. Semantic checks such as totals still belong in validation, but these three failure modes disappear."
+      },
+      {
+        "letter": "D",
+        "text": "Increase <code>max_tokens</code> and set temperature to 0 so the model produces more deterministic, complete tool inputs across the batch.",
+        "correct": false,
+        "explanation": "None of the failures are truncation, and lower temperature makes the same mistakes more consistently rather than eliminating them. These knobs change sampling, not schema adherence, so the 0.4% is unlikely to move meaningfully."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your purchase-order extraction tool's schema declares <code>date_1</code>, <code>date_2</code>, <code>amt</code>, and <code>ref</code> with no <code>description</code> on any property. Every output passes validation, but reviewers find issue and delivery dates swapped in 11% of records and <code>amt</code> sometimes holding the subtotal rather than the grand total. What is the most effective change?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add a post-processing rule that swaps the two dates when <code>date_1</code> is later than <code>date_2</code> and picks the larger of the candidate amounts.",
+        "correct": false,
+        "explanation": "The heuristic encodes assumptions that fail on real documents: a delivery date can precede a backdated issue date, and the largest figure is not the total when a credit or deposit appears. It also hides the model's confusion instead of resolving it."
+      },
+      {
+        "letter": "B",
+        "text": "Add several few-shot examples to the prompt showing a filled tool call for typical purchase orders with the intended value in each field.",
+        "correct": false,
+        "explanation": "Examples help the model guess what <code>date_1</code> means, but they live outside the schema, cost tokens per document, and break down on layouts the examples do not cover. The ambiguity is in the field definitions and should be fixed there."
+      },
+      {
+        "letter": "C",
+        "text": "Split the tool into <code>record_dates</code> and <code>record_amounts</code> so each call carries fewer fields and the model has less to confuse.",
+        "correct": false,
+        "explanation": "The confusion is semantic, not a matter of field count: <code>date_1</code> is just as opaque in a two-field tool. Splitting adds a round trip and a reassembly step for downstream systems without telling the model which date is which."
+      },
+      {
+        "letter": "D",
+        "text": "Rename the fields to <code>issue_date</code>, <code>delivery_date</code>, <code>grand_total</code>, <code>po_number</code> and add per-property descriptions with format and source hints.",
+        "correct": true,
+        "explanation": "The tool schema is the model's primary guide to what each field means, and names plus descriptions such as 'date the PO was issued, ISO 8601' remove the ambiguity at its source. This fixes the swaps and the subtotal error without extra calls, prompt tokens, or lossy heuristics."
+      }
+    ]
+  }
+]

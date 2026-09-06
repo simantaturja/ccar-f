@@ -1,0 +1,343 @@
+[
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your <code>process_refund</code> MCP tool returns the string \"Operation failed\" for every failure. Logs show two very different situations behind it: payment gateway timeouts, and refunds rejected because the 30-day window has passed. The agent retries the policy rejections three times and then tells the customer to \"try again later\", while sometimes giving up immediately on the transient gateway errors. How should the tool respond instead?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Return distinct error strings such as \"gateway timeout\" and \"refund window expired\" so the agent can tell the two situations apart from the wording.",
+        "correct": false,
+        "explanation": "Distinct wording is better than a uniform message, but it still asks the model to infer retry policy from prose, and a new error type tomorrow will be interpreted inconsistently. Recovery decisions should be driven by explicit metadata the agent can rely on, not by string matching."
+      },
+      {
+        "letter": "B",
+        "text": "Add a separate <code>check_refund_eligibility</code> tool the agent must call first, so <code>process_refund</code> is only reached for eligible orders.",
+        "correct": false,
+        "explanation": "A pre-check adds a round trip to every refund and does nothing for the gateway timeouts, which are the other half of the problem. It also reproduces business logic in a second place. The tool that fails is the one that must explain how it failed."
+      },
+      {
+        "letter": "C",
+        "text": "Return structured error metadata: <code>errorCategory</code> transient or business, an <code>isRetryable</code> flag, and a customer-friendly message for policy rejections.",
+        "correct": true,
+        "explanation": "Structured error responses let the agent act correctly without guessing: retry transient failures, stop immediately on <code>isRetryable: false</code>, and relay a ready-made explanation such as the expired window to the customer. A uniform \"Operation failed\" hides exactly the information the recovery decision depends on."
+      },
+      {
+        "letter": "D",
+        "text": "Catch failures inside the tool and return a success response containing a note about the problem, avoiding retries entirely.",
+        "correct": false,
+        "explanation": "Reporting failure as success removes the agent's ability to recover at all: it may tell the customer the refund went through, and it will not retry a gateway timeout that would have succeeded. Errors must be visible as errors, with enough structure to act on."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Tool Design & MCP",
+    "prompt": "To reduce escalations, you connected the CRM, billing, shipping, and loyalty MCP servers to the support agent, giving it 18 tools instead of the original 4. Tool selection accuracy fell from 94% to 71%, with the agent calling <code>get_loyalty_balance</code> or <code>get_shipping_rates</code> during ordinary refund conversations. All 18 tool descriptions are clear and distinct. What is the most effective remedy?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add few-shot examples to the system prompt for each of the 18 tools, illustrating the request types and phrasings that should trigger it.",
+        "correct": false,
+        "explanation": "Eighteen sets of examples add substantial prompt length and still leave the model choosing among 18 near-neighbours on every turn. Examples help with ambiguous cases between a few tools; they do not fix a decision space that has grown too wide for the agent's actual job."
+      },
+      {
+        "letter": "B",
+        "text": "Set <code>tool_choice</code> to <code>any</code> so the agent commits to a tool each turn rather than deliberating across every available option.",
+        "correct": false,
+        "explanation": "<code>tool_choice: \"any\"</code> forces a tool call but does not narrow which one; it would increase spurious calls to irrelevant tools in turns where the agent should have replied in text. The problem is the size of the choice set, not the model's willingness to choose."
+      },
+      {
+        "letter": "C",
+        "text": "Rewrite the 18 descriptions to include explicit \"do not use for\" boundaries referencing each of the other 17 tools.",
+        "correct": false,
+        "explanation": "The descriptions are already clear and distinct; cross-referencing every tool against every other one produces long, brittle descriptions that must be maintained as tools change. Even perfectly described tools degrade selection when there are too many of them for the role."
+      },
+      {
+        "letter": "D",
+        "text": "Scope the agent back to the 4 or 5 tools its workflows need, and route rare loyalty or shipping cases through escalation or a dedicated agent.",
+        "correct": true,
+        "explanation": "Giving an agent many more tools than its role requires degrades selection reliability regardless of description quality, because every turn becomes a harder decision. Restricting the set to the high-frequency tools restores the 94% behaviour, and the rare cases are handled by a path designed for them rather than by cluttering the main agent."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Customer Support Resolution Agent",
+    "domain": "Tool Design & MCP",
+    "prompt": "Before resolving any case the agent needs the applicable policy. Today it calls <code>list_policies</code>, reads the names, calls <code>get_policy</code> for one or two candidates, and often calls <code>list_policies</code> again later in the conversation. This exploratory sequence adds three tool calls and about 25 seconds per case. The policy set has 14 documents and changes monthly. How should you expose the policies through MCP?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Expose the policy documents as MCP resources so the agent sees the catalogue of policies up front without exploratory calls.",
+        "correct": true,
+        "explanation": "MCP resources are the mechanism for exposing content catalogues such as policy documents. The agent gains visibility into what exists and can pull the relevant policy directly, removing the list-then-fetch discovery loop from every case. Monthly changes are handled by the server updating the resource set."
+      },
+      {
+        "letter": "B",
+        "text": "Merge <code>list_policies</code> and <code>get_policy</code> into one <code>find_policy</code> tool that accepts a natural-language query and returns the best match.",
+        "correct": false,
+        "explanation": "A search tool still requires a call per lookup and introduces a ranking step that can return the wrong policy silently. It reduces one round trip but keeps policies invisible until asked for. For a small, known set of documents, a catalogue the agent can see beats a search it must run."
+      },
+      {
+        "letter": "C",
+        "text": "Paste the 14 policy documents into the system prompt so the agent can consult any policy without making a tool call.",
+        "correct": false,
+        "explanation": "Inlining every policy burns context on each turn of every conversation, most of which never touch most policies, and requires a prompt redeploy on each monthly change. It removes the round trips at the cost of the context budget that long support cases need."
+      },
+      {
+        "letter": "D",
+        "text": "Add a <code>PostToolUse</code> hook that caches <code>list_policies</code> results for the session so repeated listing calls return instantly.",
+        "correct": false,
+        "explanation": "Caching speeds up the repeated listing but leaves the initial discovery sequence in place and still spends model turns on calls whose only purpose is to learn what exists. Hooks are for transforming or gating tool traffic, not for substituting a missing catalogue."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Tool Design & MCP",
+    "prompt": "The document analysis subagent has one tool, <code>analyze_document</code>, taking a document and a free-text <code>instructions</code> field. Depending on the instruction, it returns summaries, extracted figures, or claim checks in inconsistent shapes, and the synthesis agent misparses about a fifth of them. The coordinator's prompts to the analysis agent already spell out the desired output. What is the best fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add an <code>output_format</code> enum parameter to <code>analyze_document</code> so the caller specifies whether it wants a summary, data points, or a verification.",
+        "correct": false,
+        "explanation": "An enum on a single tool is a lighter fix, but the tool still has one description covering three unrelated jobs, and the model must pick the right mode each call. Description ambiguity is what causes misrouting; splitting the tool gives each job a clear description and an output contract of its own."
+      },
+      {
+        "letter": "B",
+        "text": "Have the synthesis agent tolerate the variation by adding a normalisation step that detects the output shape and converts it.",
+        "correct": false,
+        "explanation": "Downstream normalisation absorbs the mess instead of removing it, and each new output variation requires new detection logic. The synthesis agent's context is also the scarcest in the system; spending it on reshaping inputs is the wrong trade."
+      },
+      {
+        "letter": "C",
+        "text": "Split it into <code>extract_data_points</code>, <code>summarize_content</code>, and <code>verify_claim_against_source</code>, each with a defined output schema.",
+        "correct": true,
+        "explanation": "A generic tool driven by free-text instructions cannot promise a stable output shape. Purpose-specific tools give the model an unambiguous choice, give each operation a defined input and output contract, and let the synthesis agent rely on consistent structure. This is the standard remedy for an overloaded generic tool."
+      },
+      {
+        "letter": "D",
+        "text": "Add few-shot examples to the analysis agent's system prompt showing the exact output layout expected for each kind of instruction.",
+        "correct": false,
+        "explanation": "Examples improve consistency but leave the interface itself undefined: nothing enforces the layout, and the tool description still cannot say what the tool returns. Tool contracts belong in the tool definition, where the schema enforces them, not only in prose examples."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Tool Design & MCP",
+    "prompt": "Every research run must begin by calling <code>decompose_topic</code>, which produces the subtopic partition the coordinator uses to assign work. In about 10% of runs the coordinator skips it and issues <code>Task</code> calls directly, producing overlapping assignments. The system prompt already says the first action must be <code>decompose_topic</code>. How do you guarantee the first call?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Set <code>tool_choice</code> to <code>any</code> on the first request so the coordinator must call a tool before producing text.",
+        "correct": false,
+        "explanation": "<code>any</code> guarantees some tool is called but not which one; the coordinator could just as easily open with a <code>Task</code> call, which is the failure you observe. Guaranteeing a specific tool needs forced selection by name."
+      },
+      {
+        "letter": "B",
+        "text": "Force the first request with <code>tool_choice: {\"type\": \"tool\", \"name\": \"decompose_topic\"}</code>, then use <code>auto</code> for subsequent turns.",
+        "correct": true,
+        "explanation": "Forced tool selection makes the model call the named tool on that request, which is exactly the deterministic guarantee needed for a mandatory first step. Switching back to <code>auto</code> afterwards restores normal model-driven selection for delegation and synthesis. Prompt instructions alone leave a non-zero skip rate."
+      },
+      {
+        "letter": "C",
+        "text": "Move the instruction from the system prompt into the first user message, where recent instructions carry more weight with the model.",
+        "correct": false,
+        "explanation": "Instruction placement can shift compliance rates, but it is still prompt guidance and the observed 10% skip rate demonstrates that guidance is insufficient here. When the API offers a mechanism that guarantees the call, relying on placement is the weaker choice."
+      },
+      {
+        "letter": "D",
+        "text": "Add a <code>PostToolUse</code> hook on <code>Task</code> that rejects the call with an error if <code>decompose_topic</code> has not run yet in this session.",
+        "correct": false,
+        "explanation": "A blocking hook does prevent the bad delegation, but it acts after the model has already spent a turn choosing wrongly and needs an error round trip to recover. Forced <code>tool_choice</code> prevents the wrong first call at request time with no wasted turn and no extra infrastructure."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Multi-Agent Research System",
+    "domain": "Tool Design & MCP",
+    "prompt": "You gave the document analysis subagent an MCP tool <code>semantic_search_corpus</code> that performs embedding-based search over the ingested document set with citation-ready excerpts. Its description is \"Search corpus\". In practice the agent uses the built-in <code>Grep</code> tool against raw text dumps almost every time, missing paraphrased passages and producing weaker citations. What is the most likely fix?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Remove <code>Grep</code> from the subagent's allowed tools so the MCP search tool is the only content search available to it.",
+        "correct": false,
+        "explanation": "Removing the alternative forces the outcome but throws away a tool that is genuinely better for exact identifiers and error strings. It also leaves the underlying problem in place: an MCP tool whose description gives the model no reason to prefer it, which will recur with the next MCP tool you add."
+      },
+      {
+        "letter": "B",
+        "text": "Add a system prompt rule stating that MCP tools take priority over built-in tools whenever both could plausibly satisfy a request.",
+        "correct": false,
+        "explanation": "A blanket preference rule is a blunt instrument that will misfire for tasks where built-ins are right, and it still does not tell the model what <code>semantic_search_corpus</code> actually does. Tool selection should follow from understanding each tool's capability, not from a category rule."
+      },
+      {
+        "letter": "C",
+        "text": "Rewrite the description to explain semantic matching, the citation-ready excerpts, and when to prefer it over exact-text search.",
+        "correct": true,
+        "explanation": "The model chooses tools from their descriptions, and a two-word description gives it no reason to prefer an unfamiliar MCP tool over the well-known <code>Grep</code>. Describing the capability, the output shape, and the boundary against exact-text search lets the model select correctly on its own, and keeps <code>Grep</code> for the cases where it is the right tool."
+      },
+      {
+        "letter": "D",
+        "text": "Rename the tool to <code>grep_corpus</code> so the model associates it with the search behaviour it already reaches for by default.",
+        "correct": false,
+        "explanation": "Borrowing the built-in tool's name signals exact-text matching, which is precisely what this tool does not do, and would confuse selection further. Names should differentiate tools; the fix is a description that explains why this search is different."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "An engineer asks the agent to find every caller of the deprecated <code>parseConfig</code> function across a 2,000-file TypeScript monorepo. The agent runs <code>Glob</code> with the pattern <code>**/*parseConfig*</code>, gets no results, and reports that the function is unused. The engineer knows it is called from at least a dozen modules. What should the agent have done?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Use <code>Grep</code> to search file contents for <code>parseConfig(</code> across the repository, then <code>Read</code> matching files to confirm call sites.",
+        "correct": true,
+        "explanation": "Callers are found in file contents, not file names. <code>Grep</code> searches content for a pattern across the codebase and returns the matching locations, which is exactly what \"every caller\" requires; <code>Read</code> then confirms context where needed. <code>Glob</code> matches paths, so a function name will almost never appear in a path."
+      },
+      {
+        "letter": "B",
+        "text": "Broaden the <code>Glob</code> pattern to <code>**/*.ts</code> to list every TypeScript file, then <code>Read</code> each one looking for the call.",
+        "correct": false,
+        "explanation": "Listing all 2,000 files and reading each is the brute-force approach that exhausts context and time, and it still uses <code>Glob</code> for a job it does not do. Content search exists precisely so the agent does not have to read everything to find a string."
+      },
+      {
+        "letter": "C",
+        "text": "Use <code>Glob</code> to locate the module that exports <code>parseConfig</code>, then <code>Read</code> it and follow its import statements to find the dependent modules.",
+        "correct": false,
+        "explanation": "Imports point outward from the exporting module to its dependencies, not inward from callers, so following them from the definition finds nothing useful. Finding dependents requires searching the rest of the codebase for references, which is content search."
+      },
+      {
+        "letter": "D",
+        "text": "Run <code>Bash</code> with <code>find . -name \"*parseConfig*\"</code> to locate the relevant files, since shell tools are faster on large repositories.",
+        "correct": false,
+        "explanation": "This repeats the same mistake in a different tool: <code>find -name</code> matches file names, not contents, and will return nothing for the same reason <code>Glob</code> did. Speed is irrelevant when the search is looking in the wrong place."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "The agent needs to change <code>return null;</code> to <code>return defaultConfig;</code> inside <code>loadUserConfig</code> in a generated file. The file contains four handler functions whose bodies are identical for several lines around that statement, differing only in the function name declared far above. <code>Edit</code> fails with \"Found 4 matches for old_string\", and widening the anchor by a few lines still matches all four. What is the correct fallback?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Retry <code>Edit</code> with <code>replace_all</code> enabled, then run three further <code>Edit</code> calls to revert the change in the other functions.",
+        "correct": false,
+        "explanation": "Replacing all four and reverting three needs the reverts to target unique text, which is the same problem in reverse, since the changed lines are still identical across functions. It multiplies risk and edits instead of making one reliable change."
+      },
+      {
+        "letter": "B",
+        "text": "Use <code>Bash</code> with <code>sed</code> to replace the statement at the specific line number reported by the earlier <code>Read</code>.",
+        "correct": false,
+        "explanation": "Line-number edits are brittle: any earlier change shifts the target and the edit lands on a different function silently. It also bypasses the file-editing tools' safeguards and diff visibility. When <code>Edit</code> cannot anchor, the documented fallback is a full-file rewrite, not shell surgery."
+      },
+      {
+        "letter": "C",
+        "text": "Ask the engineer to rename the four functions so each body becomes unique, then retry <code>Edit</code> with the same anchor text.",
+        "correct": false,
+        "explanation": "Requesting a manual refactor to work around a tool limitation blocks the task on the human and changes unrelated code. The agent has the tools to complete the modification itself once it stops relying on a unique text anchor."
+      },
+      {
+        "letter": "D",
+        "text": "<code>Read</code> the whole file, apply the change to the correct function's body, and <code>Write</code> the complete updated content back.",
+        "correct": true,
+        "explanation": "<code>Edit</code> depends on a unique text match; when the surrounding code is repeated and no unique anchor exists, the reliable path is <code>Read</code> followed by <code>Write</code> of the full file with the targeted change. The agent knows which function it is in from the file structure, so the rewrite is precise and the result is verifiable."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "Asked to explain how an order flows from the REST endpoint to the database in an unfamiliar 340-file service, the agent begins by reading every file under <code>src/</code> to \"build a complete picture\". It hits the context limit around file 180 having never located the endpoint handler, and its explanation is generic. How should the agent approach codebase exploration instead?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Read every file but summarise each into one line as it goes, keeping only the summaries in context to stay under the limit.",
+        "correct": false,
+        "explanation": "This still spends 340 file reads and produces summaries with no relation to the question being asked. The problem is not compression but direction: the agent is reading indiscriminately instead of following the flow it was asked to explain."
+      },
+      {
+        "letter": "B",
+        "text": "Use <code>Grep</code> to find the order endpoint and its handler, then <code>Read</code> it and follow its imports step by step to the data layer.",
+        "correct": true,
+        "explanation": "Incremental exploration starts from an entry point found with content search and follows imports and calls along the specific path in question. It touches perhaps a dozen files, keeps context focused on relevant code, and yields a concrete trace rather than a generic description. Reading everything up front is the anti-pattern for large codebases."
+      },
+      {
+        "letter": "C",
+        "text": "Delegate to a subagent that reads the 340 files and returns a full architectural overview, so the main context is preserved.",
+        "correct": false,
+        "explanation": "Isolating verbose output in a subagent protects the main context, but the subagent would still perform the same undirected bulk read and hit the same limit, returning an overview rather than the requested flow. Delegation helps when the delegated task is itself well targeted."
+      },
+      {
+        "letter": "D",
+        "text": "Use <code>Glob</code> to list the files and read only those in the top-level directories, assuming the entry points live there.",
+        "correct": false,
+        "explanation": "Directory position is a weak guess at where an endpoint lives, and even if the handler is found this way the flow into repositories and models still needs to be traced. A content search for the route or handler name is a direct way to locate the starting point."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Developer Productivity with Claude",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your team wants the productivity agent to read Jira tickets, add comments, and transition issue states so engineers can work a ticket end to end from Claude Code. A teammate has started writing a custom MCP server against the Jira REST API and estimates two more weeks to cover authentication, pagination, and error handling. Nothing about your Jira usage is unusual. What should you recommend?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Finish the custom server, since owning the code makes it easier to shape the tool descriptions and error responses to your agent's needs.",
+        "correct": false,
+        "explanation": "Control over descriptions and errors is real, but the two weeks buy an integration that already exists and must then be maintained against Jira API changes. Custom MCP servers are justified for team-specific workflows, not for re-implementing a standard integration."
+      },
+      {
+        "letter": "B",
+        "text": "Skip MCP and give the agent a set of <code>Bash</code> scripts wrapping <code>curl</code> calls to the Jira API, documented in CLAUDE.md.",
+        "correct": false,
+        "explanation": "Shell wrappers lose the typed tool schemas, descriptions, and structured errors that make tool selection reliable, and they push credential handling into scripts. This is a step backwards from MCP for exactly the reasons MCP exists."
+      },
+      {
+        "letter": "C",
+        "text": "Adopt an existing community or vendor Jira MCP server, and reserve custom server development for workflows specific to your team.",
+        "correct": true,
+        "explanation": "Standard integrations such as Jira are well served by existing MCP servers that already handle auth, pagination, and errors. Adopting one delivers the capability now and leaves engineering effort for the workflows that are genuinely unique to your team. Custom servers are the right tool only when no existing server fits."
+      },
+      {
+        "letter": "D",
+        "text": "Expose the Jira project as MCP resources so the agent can browse tickets, and defer commenting and transitions to a later phase.",
+        "correct": false,
+        "explanation": "Resources suit read-only content catalogues, but the team explicitly needs actions: comments and state transitions require tools. Scoping down to browsing does not meet the stated goal, and an existing server already provides both reading and acting."
+      }
+    ]
+  },
+  {
+    "scenarioTitle": "Structured Data Extraction",
+    "domain": "Tool Design & MCP",
+    "prompt": "Your pipeline defines three extraction tools, <code>extract_invoice</code>, <code>extract_receipt</code>, and <code>extract_purchase_order</code>, and lets the model choose based on the document. With <code>tool_choice</code> left at <code>auto</code>, about 4% of responses contain no tool call at all, just prose such as \"This appears to be an invoice from Acme Corp\", which your parser rejects. Document types arrive unlabeled. Which change fixes this?",
+    "options": [
+      {
+        "letter": "A",
+        "text": "Add a fallback parser that extracts the document type from the prose response and re-calls the model with the matching tool forced.",
+        "correct": false,
+        "explanation": "Parsing prose to recover from a structured-output failure adds a round trip and a fragile text-matching step for a problem the API can prevent outright. The 4% should never reach the parser as prose in the first place."
+      },
+      {
+        "letter": "B",
+        "text": "Add a system prompt instruction: \"Respond only with a tool call, no text\", and lower the temperature to reduce variance.",
+        "correct": false,
+        "explanation": "Prompt instructions reduce but do not eliminate conversational responses under <code>auto</code>, and temperature affects randomness of content, not the decision to call a tool. A residual failure rate remains where a hard guarantee is available."
+      },
+      {
+        "letter": "C",
+        "text": "Force <code>extract_invoice</code> with <code>tool_choice: {\"type\": \"tool\", \"name\": \"extract_invoice\"}</code>, since invoices are the most common document type.",
+        "correct": false,
+        "explanation": "Forcing one named tool guarantees a call but removes the model's ability to select the receipt or purchase order schema, so every non-invoice document would be extracted into the wrong shape. Forced selection is for when the required tool is already known."
+      },
+      {
+        "letter": "D",
+        "text": "Set <code>tool_choice</code> to <code>any</code> so the model must call one of the three tools but still chooses which based on the document.",
+        "correct": true,
+        "explanation": "<code>any</code> guarantees that the response is a tool call while leaving the choice among the three schemas to the model, which is exactly what unlabeled documents require. It removes the prose responses deterministically without sacrificing type selection, unlike forcing a single tool or relying on prompt wording."
+      }
+    ]
+  }
+]
